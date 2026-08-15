@@ -1,6 +1,12 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
 
-import { ConfigKeyEnum } from "@repo/zod-types";
+import {
+  ConfigKeyEnum,
+  McpServerErrorStatusEnum,
+  McpServerStatusEnum,
+  McpServerTypeEnum,
+} from "@repo/zod-types";
 import { and, eq, isNull, notInArray } from "drizzle-orm";
 
 import { auth } from "../auth";
@@ -10,13 +16,16 @@ import {
   apiKeysTable,
   configTable,
   endpointsTable,
+  mcpServersTable,
+  namespaceServerMappingsTable,
   namespacesTable,
   usersTable,
 } from "../db/schema";
 
 /**
  * Environment-based bootstrap for MetaMCP.
- * Supports arrays of Users, API Keys, Namespaces, and Endpoints via JSON environment variables.
+ * Supports arrays of Users, API Keys, MCP Servers, Namespaces, and Endpoints
+ * via JSON environment variables.
  */
 
 type UserConfig = {
@@ -54,6 +63,41 @@ type EndpointConfig = {
   update?: boolean;
 };
 
+type McpServerEndpointConfig = {
+  name?: string;
+  description?: string;
+  enable_auth?: boolean;
+  enable_auth_query?: boolean;
+  enable_auth_oauth?: boolean;
+  is_public?: boolean;
+};
+
+type McpServerConfig = {
+  name: string;
+  type?: string;
+  description?: string;
+  url?: string;
+  headers?: Record<string, string>;
+  bearerToken?: string;
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  forward_headers?: Record<string, string>;
+  is_public?: boolean;
+  user_email?: string;
+  owner?: string;
+  update?: boolean;
+  /**
+   * When true, also create/update a namespace + ACTIVE mapping + endpoint named
+   * after this server (auth disabled by default). Replaces external seed scripts.
+   */
+  expose?: boolean;
+  /** Optional explicit namespace name to create/map into (defaults to server name when expose=true). */
+  namespace?: string;
+  /** Optional endpoint overrides when expose=true, or false to skip endpoint creation. */
+  endpoint?: boolean | McpServerEndpointConfig;
+};
+
 type EnvConfig = {
   // Single user (legacy support)
   defaultUserEmail?: string;
@@ -78,6 +122,7 @@ type EnvConfig = {
 
   // Array configurations
   apiKeys: ApiKeyConfig[];
+  mcpServers: McpServerConfig[];
   namespaces: NamespaceConfig[];
   endpoints: EndpointConfig[];
 };
@@ -85,6 +130,7 @@ type EnvConfig = {
 const BOOTSTRAP_COMPLETE_KEY = "BOOTSTRAP_COMPLETE";
 const BOOTSTRAP_USER_PASSWORD_FP_PREFIX =
   "BOOTSTRAP_USER_PASSWORD_FINGERPRINT_";
+const ENV_PLACEHOLDER = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 
 function parseBool(value: string | undefined, def: boolean): boolean {
   if (value === undefined) return def;
@@ -131,6 +177,137 @@ function parseJsonArray<T>(envVar: string | undefined, defaultValue: T[]): T[] {
     );
     return defaultValue;
   }
+}
+
+/**
+ * Resolve ${VAR} placeholders from process.env (needed for HTTP url/headers;
+ * MetaMCP only interpolates STDIO env at runtime).
+ */
+function resolveEnvPlaceholders(
+  value: string,
+  context: string,
+): string {
+  const missing = new Set<string>();
+  const out = value.replace(ENV_PLACEHOLDER, (match, key: string) => {
+    const envVal = process.env[key];
+    if (envVal === undefined || envVal === "") {
+      missing.add(key);
+      return match;
+    }
+    return envVal;
+  });
+  if (missing.size > 0) {
+    console.warn(
+      `⚠️ ${context}: unresolved/empty env: ${Array.from(missing).sort().join(", ")}`,
+    );
+  }
+  return out;
+}
+
+function resolveEnvValue(
+  value: unknown,
+  context: string,
+): unknown {
+  if (typeof value === "string") {
+    return resolveEnvPlaceholders(value, context);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item, i) => resolveEnvValue(item, `${context}[${i}]`));
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = resolveEnvValue(v, `${context}.${k}`);
+    }
+    return out;
+  }
+  return value;
+}
+
+function normalizeMcpServerType(
+  raw: string | undefined,
+): (typeof McpServerTypeEnum.enum)[keyof typeof McpServerTypeEnum.enum] {
+  const upper = (raw || "STDIO").toUpperCase().replace(/-/g, "_");
+  if (upper === "STDIO" || upper === "STD") {
+    return McpServerTypeEnum.enum.STDIO;
+  }
+  if (upper === "SSE") {
+    return McpServerTypeEnum.enum.SSE;
+  }
+  if (
+    upper === "STREAMABLE_HTTP" ||
+    upper === "STREAMABLEHTTP" ||
+    upper === "HTTP"
+  ) {
+    return McpServerTypeEnum.enum.STREAMABLE_HTTP;
+  }
+  console.warn(`⚠️ Unknown MCP server type "${raw}", defaulting to STDIO`);
+  return McpServerTypeEnum.enum.STDIO;
+}
+
+function normalizeMcpServersPayload(
+  parsed: unknown,
+  defaultExpose: boolean,
+): McpServerConfig[] {
+  if (Array.isArray(parsed)) {
+    return (parsed as McpServerConfig[]).map((server) => ({
+      ...server,
+      expose: server.expose ?? defaultExpose,
+    }));
+  }
+
+  if (
+    parsed &&
+    typeof parsed === "object" &&
+    "mcpServers" in (parsed as Record<string, unknown>) &&
+    typeof (parsed as { mcpServers: unknown }).mcpServers === "object" &&
+    (parsed as { mcpServers: unknown }).mcpServers !== null
+  ) {
+    const servers = (parsed as { mcpServers: Record<string, Omit<McpServerConfig, "name">> })
+      .mcpServers;
+    return Object.entries(servers).map(([name, cfg]) => ({
+      name,
+      ...cfg,
+      expose: cfg.expose ?? defaultExpose,
+    }));
+  }
+
+  console.warn(
+    "⚠️ BOOTSTRAP_MCP_SERVERS payload must be a JSON array or { mcpServers: { ... } }",
+  );
+  return [];
+}
+
+function parseMcpServersConfig(): McpServerConfig[] {
+  const defaultExpose = parseBool(
+    process.env.BOOTSTRAP_MCP_SERVERS_EXPOSE,
+    false,
+  );
+
+  const inline = nonEmpty(process.env.BOOTSTRAP_MCP_SERVERS);
+  if (inline) {
+    try {
+      return normalizeMcpServersPayload(JSON.parse(inline), defaultExpose);
+    } catch (err) {
+      console.warn(`⚠️ Failed to parse BOOTSTRAP_MCP_SERVERS: ${err}`);
+      return [];
+    }
+  }
+
+  const filePath = nonEmpty(process.env.BOOTSTRAP_MCP_SERVERS_FILE);
+  if (filePath) {
+    try {
+      const raw = fs.readFileSync(filePath, "utf8");
+      return normalizeMcpServersPayload(JSON.parse(raw), defaultExpose);
+    } catch (err) {
+      console.warn(
+        `⚠️ Failed to read/parse BOOTSTRAP_MCP_SERVERS_FILE (${filePath}): ${err}`,
+      );
+      return [];
+    }
+  }
+
+  return [];
 }
 
 /**
@@ -204,6 +381,7 @@ function parseEnvConfig(): EnvConfig {
 
     // Array configurations
     apiKeys: parseJsonArray<ApiKeyConfig>(process.env.BOOTSTRAP_API_KEYS, []),
+    mcpServers: parseMcpServersConfig(),
     namespaces: parseJsonArray<NamespaceConfig>(
       process.env.BOOTSTRAP_NAMESPACES,
       [],
@@ -634,6 +812,274 @@ async function bootstrapApiKeys(
 }
 
 /**
+ * Bootstrap MCP servers from configuration array.
+ * Optionally creates a per-server namespace + mapping + endpoint when expose=true.
+ */
+async function bootstrapMcpServers(
+  config: EnvConfig,
+  userMap: Map<string, string>,
+): Promise<void> {
+  if (!config.mcpServers || config.mcpServers.length === 0) {
+    console.log(
+      "ℹ️ No MCP servers configured for bootstrap (BOOTSTRAP_MCP_SERVERS / BOOTSTRAP_MCP_SERVERS_FILE is empty)",
+    );
+    return;
+  }
+
+  console.log(`🔧 Bootstrapping ${config.mcpServers.length} MCP server(s)...`);
+
+  for (const raw of config.mcpServers) {
+    try {
+      const name = raw.name?.trim();
+      if (!name) {
+        console.warn("⚠️ Skipping MCP server with empty name");
+        continue;
+      }
+
+      const resolved = resolveEnvValue(
+        raw,
+        `mcpServers.${name}`,
+      ) as McpServerConfig;
+      const type = normalizeMcpServerType(resolved.type);
+      const shouldUpdate = resolved.update ?? true;
+      const isPublic = resolved.is_public ?? false;
+      const ownerEmail = getOwnerEmail(resolved);
+      const description = resolved.description ?? null;
+
+      let ownerUserId: string | null = null;
+      if (!isPublic) {
+        if (ownerEmail) {
+          ownerUserId = userMap.get(ownerEmail) ?? null;
+          if (!ownerUserId) {
+            console.warn(
+              `⚠️ Skipping MCP server "${name}" because user "${ownerEmail}" was not found`,
+            );
+            continue;
+          }
+        } else {
+          const firstUserId = Array.from(userMap.values())[0];
+          if (!firstUserId) {
+            console.warn(
+              `⚠️ Skipping private MCP server "${name}" because no users are available`,
+            );
+            continue;
+          }
+          ownerUserId = firstUserId;
+        }
+      }
+
+      let url = resolved.url ?? null;
+      let command = resolved.command ?? null;
+      let args = Array.isArray(resolved.args) ? resolved.args : [];
+      let env =
+        resolved.env && typeof resolved.env === "object" ? resolved.env : {};
+      let headers =
+        resolved.headers && typeof resolved.headers === "object"
+          ? resolved.headers
+          : {};
+      const bearerToken = resolved.bearerToken ?? null;
+      const forwardHeaders =
+        resolved.forward_headers && typeof resolved.forward_headers === "object"
+          ? resolved.forward_headers
+          : {};
+
+      if (
+        type === McpServerTypeEnum.enum.SSE ||
+        type === McpServerTypeEnum.enum.STREAMABLE_HTTP
+      ) {
+        if (!url) {
+          console.warn(
+            `⚠️ Skipping MCP server "${name}" because url is required for type ${type}`,
+          );
+          continue;
+        }
+        command = null;
+        args = [];
+        env = {};
+      } else {
+        if (!command) {
+          console.warn(
+            `⚠️ Skipping MCP server "${name}" because command is required for STDIO`,
+          );
+          continue;
+        }
+        url = null;
+      }
+
+      const whereCondition = ownerUserId
+        ? and(
+            eq(mcpServersTable.name, name),
+            eq(mcpServersTable.user_id, ownerUserId),
+          )
+        : and(eq(mcpServersTable.name, name), isNull(mcpServersTable.user_id));
+
+      const existing = await db.query.mcpServersTable.findFirst({
+        where: whereCondition,
+      });
+
+      const values = {
+        name,
+        description,
+        type,
+        command,
+        args,
+        env,
+        url,
+        headers,
+        bearerToken,
+        forward_headers: forwardHeaders,
+        user_id: ownerUserId,
+        error_status: McpServerErrorStatusEnum.enum.NONE,
+      };
+
+      let serverUuid: string | undefined;
+      if (!existing) {
+        const inserted = await db
+          .insert(mcpServersTable)
+          .values(values)
+          .returning({ uuid: mcpServersTable.uuid });
+        serverUuid = inserted?.[0]?.uuid;
+        const ownerInfo = ownerUserId
+          ? `for user ${ownerEmail ?? Array.from(userMap.keys())[0]}`
+          : "(public)";
+        console.log(
+          `✓ Created ${isPublic ? "public" : "private"} MCP server "${name}" (${type}) ${ownerInfo}`,
+        );
+      } else {
+        serverUuid = existing.uuid;
+        if (shouldUpdate) {
+          await db
+            .update(mcpServersTable)
+            .set(values)
+            .where(eq(mcpServersTable.uuid, existing.uuid));
+          console.log(`✓ Updated MCP server "${name}" (${type})`);
+        } else {
+          console.log(`✓ MCP server "${name}" already exists (no update)`);
+        }
+      }
+
+      if (!serverUuid) {
+        console.warn(`⚠️ MCP server "${name}" has no uuid; skipping expose`);
+        continue;
+      }
+
+      const expose = resolved.expose ?? false;
+      if (!expose) {
+        continue;
+      }
+
+      const namespaceName = resolved.namespace?.trim() || name;
+      const nsWhere = ownerUserId
+        ? and(
+            eq(namespacesTable.name, namespaceName),
+            eq(namespacesTable.user_id, ownerUserId),
+          )
+        : and(
+            eq(namespacesTable.name, namespaceName),
+            isNull(namespacesTable.user_id),
+          );
+
+      let namespaceUuid: string | undefined;
+      const existingNs = await db.query.namespacesTable.findFirst({
+        where: nsWhere,
+      });
+
+      if (!existingNs) {
+        const insertedNs = await db
+          .insert(namespacesTable)
+          .values({
+            name: namespaceName,
+            description: `Namespace for ${name}`,
+            user_id: ownerUserId,
+          })
+          .returning({ uuid: namespacesTable.uuid });
+        namespaceUuid = insertedNs?.[0]?.uuid;
+        if (!namespaceUuid) {
+          console.warn(
+            `⚠️ Failed to create namespace "${namespaceName}" for MCP server "${name}"`,
+          );
+          continue;
+        }
+        console.log(
+          `✓ Created namespace "${namespaceName}" for MCP server "${name}"`,
+        );
+      } else {
+        namespaceUuid = existingNs.uuid;
+        if (shouldUpdate) {
+          await db
+            .update(namespacesTable)
+            .set({
+              description: `Namespace for ${name}`,
+              updated_at: new Date(),
+              user_id: ownerUserId,
+            })
+            .where(eq(namespacesTable.uuid, existingNs.uuid));
+        }
+      }
+
+      await db
+        .insert(namespaceServerMappingsTable)
+        .values({
+          namespace_uuid: namespaceUuid,
+          mcp_server_uuid: serverUuid,
+          status: McpServerStatusEnum.enum.ACTIVE,
+        })
+        .onConflictDoUpdate({
+          target: [
+            namespaceServerMappingsTable.namespace_uuid,
+            namespaceServerMappingsTable.mcp_server_uuid,
+          ],
+          set: { status: McpServerStatusEnum.enum.ACTIVE },
+        });
+
+      if (resolved.endpoint === false) {
+        continue;
+      }
+
+      const endpointCfg: McpServerEndpointConfig =
+        typeof resolved.endpoint === "object" && resolved.endpoint
+          ? resolved.endpoint
+          : {};
+      const endpointName = endpointCfg.name?.trim() || name;
+      const existingEndpoint = await db.query.endpointsTable.findFirst({
+        where: eq(endpointsTable.name, endpointName),
+      });
+
+      const endpointValues = {
+        name: endpointName,
+        description: endpointCfg.description ?? `Endpoint for ${name}`,
+        namespace_uuid: namespaceUuid,
+        enable_api_key_auth: endpointCfg.enable_auth ?? false,
+        use_query_param_auth: endpointCfg.enable_auth_query ?? false,
+        enable_oauth: endpointCfg.enable_auth_oauth ?? false,
+        user_id: endpointCfg.is_public === true ? null : ownerUserId,
+        updated_at: new Date(),
+      };
+
+      if (!existingEndpoint) {
+        await db.insert(endpointsTable).values(endpointValues);
+        console.log(
+          `✓ Created endpoint "${endpointName}" for MCP server "${name}"`,
+        );
+      } else if (shouldUpdate) {
+        await db
+          .update(endpointsTable)
+          .set(endpointValues)
+          .where(eq(endpointsTable.uuid, existingEndpoint.uuid));
+        console.log(
+          `✓ Updated endpoint "${endpointName}" for MCP server "${name}"`,
+        );
+      }
+    } catch (err) {
+      console.warn(
+        `⚠️ Failed to bootstrap MCP server "${raw.name ?? "<unknown>"}":`,
+        err,
+      );
+    }
+  }
+}
+
+/**
  * Bootstrap namespaces from configuration array.
  */
 async function bootstrapNamespaces(
@@ -933,6 +1379,35 @@ function validateConfig(config: EnvConfig): void {
     }
   }
 
+  // Validate MCP servers configuration
+  for (const server of config.mcpServers) {
+    if (!server.name || server.name.trim() === "") {
+      console.warn("⚠️ MCP server configuration is missing 'name' field");
+      continue;
+    }
+    const type = normalizeMcpServerType(server.type);
+    if (
+      (type === McpServerTypeEnum.enum.SSE ||
+        type === McpServerTypeEnum.enum.STREAMABLE_HTTP) &&
+      (!server.url || server.url.trim() === "")
+    ) {
+      console.warn(
+        `⚠️ MCP server "${server.name}" type ${type} requires a 'url' field`,
+      );
+    }
+    if (type === McpServerTypeEnum.enum.STDIO && !server.command) {
+      console.warn(
+        `⚠️ MCP server "${server.name}" type STDIO requires a 'command' field`,
+      );
+    }
+    const ownerEmail = getOwnerEmail(server);
+    if (!server.is_public && ownerEmail && config.users.length === 0) {
+      console.warn(
+        `⚠️ MCP server "${server.name}" references user "${ownerEmail}" but no users are configured`,
+      );
+    }
+  }
+
   // Validate namespaces configuration
   for (const ns of config.namespaces) {
     if (!ns.name || ns.name.trim() === "") {
@@ -976,6 +1451,7 @@ export async function initializeEnvironmentConfiguration(): Promise<void> {
     console.log("📋 Bootstrap Configuration:");
     console.log(`   Users: ${config.users.length} configured`);
     console.log(`   API Keys: ${config.apiKeys.length} configured`);
+    console.log(`   MCP Servers: ${config.mcpServers.length} configured`);
     console.log(`   Namespaces: ${config.namespaces.length} configured`);
     console.log(`   Endpoints: ${config.endpoints.length} configured`);
     console.log(`   Recreate User: ${config.recreateDefaultUser}`);
@@ -1040,6 +1516,13 @@ export async function initializeEnvironmentConfiguration(): Promise<void> {
     await bootstrapApiKeys(config, userMap);
   } catch (err) {
     console.warn("⚠️ API keys bootstrap failed:", err);
+  }
+
+  // Bootstrap MCP servers (optionally creates per-server namespace/endpoint)
+  try {
+    await bootstrapMcpServers(config, userMap);
+  } catch (err) {
+    console.warn("⚠️ MCP servers bootstrap failed:", err);
   }
 
   // Bootstrap namespaces and collect UUID mappings
