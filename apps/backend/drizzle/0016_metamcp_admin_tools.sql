@@ -1,1 +1,0 @@
-ALTER TABLE "endpoints" ADD COLUMN "enable_metamcp_admin_tools" boolean DEFAULT false NOT NULL;

@@ -37,8 +37,7 @@ vi.mock("../../index", () => {
                   const existing = store.get(key);
                   if (existing) {
                     // ON CONFLICT DO UPDATE: merge only the keys present in `set`.
-                    // Strip the sql`NOW()` updated_at because the fake can't
-                    // execute SQL — overwrite with a Date instead.
+                    // Strip updated_at from the conflict set; the fake uses a Date.
                     const { updated_at: _ignored, ...applicable } = set;
                     const updated = {
                       ...existing,

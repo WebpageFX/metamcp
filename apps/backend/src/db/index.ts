@@ -1,33 +1,57 @@
-import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
+import { mkdirSync } from "node:fs";
+import { dirname, isAbsolute, resolve } from "node:path";
 
-import logger from "@/utils/logger";
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 
 import * as schema from "./schema";
 
-const { DATABASE_URL, POSTGRES_CA_CERT } = process.env;
+const DEFAULT_DATABASE_URL = "file:./data/metamcp.db";
 
-if (!DATABASE_URL) {
-  throw new Error("DATABASE_URL is not set");
+function sqliteFilePath(databaseUrl: string): string {
+  if (/^(postgres(ql)?|mysql|mariadb):\/\//i.test(databaseUrl)) {
+    throw new Error(
+      `DATABASE_URL must be a SQLite file URL (e.g. file:/data/metamcp.db), got: ${databaseUrl}`,
+    );
+  }
+
+  let withoutScheme = databaseUrl;
+  if (databaseUrl.startsWith("file:")) {
+    withoutScheme = databaseUrl.slice("file:".length);
+  } else if (databaseUrl.startsWith("sqlite://")) {
+    // sqlite:///abs/path or sqlite://./rel/path — strip scheme only
+    withoutScheme = databaseUrl.slice("sqlite://".length);
+  } else if (databaseUrl.startsWith("sqlite:")) {
+    withoutScheme = databaseUrl.slice("sqlite:".length);
+  }
+
+  // file:///data/foo.db → /data/foo.db
+  if (withoutScheme.startsWith("//")) {
+    withoutScheme = withoutScheme.slice(1);
+  }
+
+  if (isAbsolute(withoutScheme)) {
+    return withoutScheme;
+  }
+
+  return resolve(process.cwd(), withoutScheme);
 }
 
-// Use an explicit pg Pool so we can attach a global error handler.
-// This prevents unhandled 'error' events from bringing down the Node process
-// when the database terminates idle connections (e.g., during maintenance).
-export const pool = new Pool({
-  connectionString: DATABASE_URL,
-  ...(POSTGRES_CA_CERT && {
-    ssl: {
-      ca: POSTGRES_CA_CERT,
-      rejectUnauthorized: true,
-    },
-  }),
-});
+const databaseUrl =
+  process.env.DATABASE_URL ||
+  process.env.SQLITE_DATABASE_URL ||
+  DEFAULT_DATABASE_URL;
+const sqlitePath = sqliteFilePath(databaseUrl);
 
-pool.on("error", (err) => {
-  // Log and continue so the process doesn't crash on idle client errors.
-  // pg-pool will create a new client on the next checkout automatically.
-  logger.error("PostgreSQL pool error (ignored):", err);
-});
+mkdirSync(dirname(sqlitePath), { recursive: true });
 
-export const db = drizzle(pool, { schema });
+const sqlite = new Database(sqlitePath);
+sqlite.pragma("journal_mode = WAL");
+sqlite.pragma("synchronous = NORMAL");
+sqlite.pragma("busy_timeout = 5000");
+sqlite.pragma("foreign_keys = ON");
+sqlite.pragma("cache_size = -20000");
+sqlite.pragma("mmap_size = 268435456");
+
+export const db = drizzle(sqlite, { schema });
+export const sqliteClient = sqlite;

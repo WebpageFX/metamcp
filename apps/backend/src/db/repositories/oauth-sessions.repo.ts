@@ -3,7 +3,7 @@ import {
   OAuthSessionCreateInput,
   OAuthSessionUpdateInput,
 } from "@repo/zod-types";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { db } from "../index";
 import { oauthSessionsTable } from "../schema";
@@ -54,7 +54,7 @@ export class OAuthSessionsRepository {
         ...(input.expected_state && {
           expected_state: input.expected_state,
         }),
-        updated_at: sql`NOW()`,
+        updated_at: new Date(),
       })
       .where(eq(oauthSessionsTable.mcp_server_uuid, input.mcp_server_uuid))
       .returning();
@@ -74,7 +74,7 @@ export class OAuthSessionsRepository {
       .update(oauthSessionsTable)
       .set({
         expected_state: null,
-        updated_at: sql`NOW()`,
+        updated_at: new Date(),
       })
       .where(eq(oauthSessionsTable.mcp_server_uuid, mcpServerUuid))
       .returning();
@@ -107,7 +107,7 @@ export class OAuthSessionsRepository {
           }),
           ...(input.tokens && { tokens: input.tokens }),
           ...(input.code_verifier && { code_verifier: input.code_verifier }),
-          updated_at: sql`NOW()`,
+          updated_at: new Date(),
         },
       })
       .returning();

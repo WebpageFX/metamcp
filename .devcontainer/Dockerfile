@@ -8,11 +8,13 @@ RUN apt-get update && apt-get install -y \
     git \
     vim \
     nano \
-    postgresql-client \
+    python3 \
+    make \
+    g++ \
     ca-certificates \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
-    && npm install -g pnpm@10.12.0 \
+    && npm install -g pnpm@10.29.3 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

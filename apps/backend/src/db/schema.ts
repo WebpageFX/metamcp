@@ -5,78 +5,67 @@ import {
   McpServerTypeEnum,
   UpstreamTokenResponse,
 } from "@repo/zod-types";
-import { sql } from "drizzle-orm";
 import {
-  boolean,
   index,
   integer,
-  jsonb,
-  pgEnum,
-  pgTable,
+  sqliteTable,
   text,
-  timestamp,
   unique,
-  uuid,
-} from "drizzle-orm/pg-core";
+} from "drizzle-orm/sqlite-core";
 
-// zod v4 types `ZodEnum.options` as a plain array, but drizzle's pgEnum requires
-// a non-empty tuple. Re-assert the shape while preserving the literal union so
-// the generated columns keep their narrow enum types.
 function toEnumTuple<T extends string>(options: readonly T[]): [T, ...T[]] {
   return options as unknown as [T, ...T[]];
 }
 
-export const mcpServerTypeEnum = pgEnum(
-  "mcp_server_type",
-  toEnumTuple(McpServerTypeEnum.options),
-);
-export const mcpServerStatusEnum = pgEnum(
-  "mcp_server_status",
-  toEnumTuple(McpServerStatusEnum.options),
-);
-export const mcpServerErrorStatusEnum = pgEnum(
-  "mcp_server_error_status",
-  toEnumTuple(McpServerErrorStatusEnum.options),
-);
-export const mcpRequestAuditStatusEnum = pgEnum("mcp_request_audit_status", [
-  "SUCCESS",
-  "ERROR",
-]);
+const uuidPk = (name = "uuid") =>
+  text(name)
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID());
 
-export const mcpServersTable = pgTable(
+const createdAt = (name = "created_at") =>
+  integer(name, { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date());
+
+const updatedAt = (name = "updated_at") =>
+  integer(name, { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date());
+
+export const mcpServersTable = sqliteTable(
   "mcp_servers",
   {
-    uuid: uuid("uuid").primaryKey().defaultRandom(),
+    uuid: uuidPk(),
     name: text("name").notNull(),
     description: text("description"),
-    type: mcpServerTypeEnum("type")
+    type: text("type", { enum: toEnumTuple(McpServerTypeEnum.options) })
       .notNull()
       .default(McpServerTypeEnum.enum.STDIO),
     command: text("command"),
-    args: text("args")
-      .array()
+    args: text("args", { mode: "json" })
+      .$type<string[]>()
       .notNull()
-      .default(sql`'{}'::text[]`),
-    env: jsonb("env")
+      .default([]),
+    env: text("env", { mode: "json" })
       .$type<{ [key: string]: string }>()
       .notNull()
-      .default(sql`'{}'::jsonb`),
+      .default({}),
     url: text("url"),
-    error_status: mcpServerErrorStatusEnum("error_status")
+    error_status: text("error_status", {
+      enum: toEnumTuple(McpServerErrorStatusEnum.options),
+    })
       .notNull()
       .default(McpServerErrorStatusEnum.enum.NONE),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: createdAt(),
     bearerToken: text("bearer_token"),
-    headers: jsonb("headers")
+    headers: text("headers", { mode: "json" })
       .$type<{ [key: string]: string }>()
       .notNull()
-      .default(sql`'{}'::jsonb`),
-    forward_headers: jsonb("forward_headers")
+      .default({}),
+    forward_headers: text("forward_headers", { mode: "json" })
       .$type<{ [key: string]: string }>()
       .notNull()
-      .default(sql`'{}'::jsonb`),
+      .default({}),
     user_id: text("user_id").references(() => usersTable.id, {
       onDelete: "cascade",
     }),
@@ -85,49 +74,26 @@ export const mcpServersTable = pgTable(
     index("mcp_servers_type_idx").on(table.type),
     index("mcp_servers_user_id_idx").on(table.user_id),
     index("mcp_servers_error_status_idx").on(table.error_status),
-    // Allow same name for different users, but unique within user scope (including public)
     unique("mcp_servers_name_user_unique_idx").on(table.name, table.user_id),
-    sql`CONSTRAINT mcp_servers_name_regex_check CHECK (
-        name ~ '^[a-zA-Z0-9_-]+$'
-      )`,
-    sql`CONSTRAINT mcp_servers_url_check CHECK (
-        (type = 'SSE' AND url IS NOT NULL AND command IS NULL AND url ~ '^https?://[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*(:[0-9]+)?(/[a-zA-Z0-9-._~:/?#\[\]@!$&''()*+,;=]*)?$') OR
-        (type = 'STDIO' AND url IS NULL AND command IS NOT NULL) OR
-        (type = 'STREAMABLE_HTTP' AND url IS NOT NULL AND command IS NULL AND url ~ '^https?://[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*(:[0-9]+)?(/[a-zA-Z0-9-._~:/?#\[\]@!$&''()*+,;=]*)?$')
-      )`,
   ],
 );
 
-export const oauthSessionsTable = pgTable(
+export const oauthSessionsTable = sqliteTable(
   "oauth_sessions",
   {
-    uuid: uuid("uuid").primaryKey().defaultRandom(),
-    mcp_server_uuid: uuid("mcp_server_uuid")
+    uuid: uuidPk(),
+    mcp_server_uuid: text("mcp_server_uuid")
       .notNull()
       .references(() => mcpServersTable.uuid, { onDelete: "cascade" }),
-    client_information: jsonb("client_information")
+    client_information: text("client_information", { mode: "json" })
       .$type<OAuthClientInformation>()
       .notNull()
-      .default(sql`'{}'::jsonb`),
-    // Typed as UpstreamTokenResponse (RFC 6749 + .passthrough()) rather
-    // than the MCP SDK's narrow OAuthTokens so providers' extra response
-    // fields (Salesforce `instance_url`, OIDC `id_token`, Microsoft
-    // `ext_expires_in`, ...) round-trip without `as unknown as` casts at
-    // the call sites.
-    tokens: jsonb("tokens").$type<UpstreamTokenResponse>(),
+      .default({} as OAuthClientInformation),
+    tokens: text("tokens", { mode: "json" }).$type<UpstreamTokenResponse>(),
     code_verifier: text("code_verifier"),
-    // CSRF defence (RFC 6749 §10.12). Generated server-side at the
-    // authorize-redirect step (`DbOAuthClientProvider.state()`), compared
-    // against the upstream's echoed `state` at token exchange, and cleared
-    // on success (one-shot). NEVER returned to the frontend — the
-    // serializer strips it.
     expected_state: text("expected_state"),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updated_at: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: createdAt(),
+    updated_at: updatedAt(),
   },
   (table) => [
     index("oauth_sessions_mcp_server_uuid_idx").on(table.mcp_server_uuid),
@@ -135,13 +101,13 @@ export const oauthSessionsTable = pgTable(
   ],
 );
 
-export const toolsTable = pgTable(
+export const toolsTable = sqliteTable(
   "tools",
   {
-    uuid: uuid("uuid").primaryKey().defaultRandom(),
+    uuid: uuidPk(),
     name: text("name").notNull(),
     description: text("description"),
-    toolSchema: jsonb("tool_schema")
+    toolSchema: text("tool_schema", { mode: "json" })
       .$type<{
         type: "object";
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -149,13 +115,9 @@ export const toolsTable = pgTable(
         required?: string[];
       }>()
       .notNull(),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updated_at: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    mcp_server_uuid: uuid("mcp_server_uuid")
+    created_at: createdAt(),
+    updated_at: updatedAt(),
+    mcp_server_uuid: text("mcp_server_uuid")
       .notNull()
       .references(() => mcpServersTable.uuid, { onDelete: "cascade" }),
   },
@@ -168,31 +130,24 @@ export const toolsTable = pgTable(
   ],
 );
 
-// Better-auth tables
-export const usersTable = pgTable("users", {
+export const usersTable = sqliteTable("users", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
-  emailVerified: boolean("email_verified").notNull().default(false),
+  emailVerified: integer("email_verified", { mode: "boolean" })
+    .notNull()
+    .default(false),
   image: text("image"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: createdAt("created_at"),
+  updatedAt: updatedAt("updated_at"),
 });
 
-export const sessionsTable = pgTable("sessions", {
+export const sessionsTable = sqliteTable("sessions", {
   id: text("id").primaryKey(),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
   token: text("token").notNull().unique(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: createdAt("created_at"),
+  updatedAt: updatedAt("updated_at"),
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
   userId: text("user_id")
@@ -200,7 +155,7 @@ export const sessionsTable = pgTable("sessions", {
     .references(() => usersTable.id, { onDelete: "cascade" }),
 });
 
-export const accountsTable = pgTable("accounts", {
+export const accountsTable = sqliteTable("accounts", {
   id: text("id").primaryKey(),
   accountId: text("account_id").notNull(),
   providerId: text("provider_id").notNull(),
@@ -210,76 +165,66 @@ export const accountsTable = pgTable("accounts", {
   accessToken: text("access_token"),
   refreshToken: text("refresh_token"),
   idToken: text("id_token"),
-  accessTokenExpiresAt: timestamp("access_token_expires_at", {
-    withTimezone: true,
+  accessTokenExpiresAt: integer("access_token_expires_at", {
+    mode: "timestamp",
   }),
-  refreshTokenExpiresAt: timestamp("refresh_token_expires_at", {
-    withTimezone: true,
+  refreshTokenExpiresAt: integer("refresh_token_expires_at", {
+    mode: "timestamp",
   }),
   scope: text("scope"),
   password: text("password"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: createdAt("created_at"),
+  updatedAt: updatedAt("updated_at"),
 });
 
-export const verificationsTable = pgTable("verifications", {
+export const verificationsTable = sqliteTable("verifications", {
   id: text("id").primaryKey(),
   identifier: text("identifier").notNull(),
   value: text("value").notNull(),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+  createdAt: createdAt("created_at"),
+  updatedAt: updatedAt("updated_at"),
 });
 
-// Namespaces table
-export const namespacesTable = pgTable(
+export const namespacesTable = sqliteTable(
   "namespaces",
   {
-    uuid: uuid("uuid").primaryKey().defaultRandom(),
+    uuid: uuidPk(),
     name: text("name").notNull(),
     description: text("description"),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updated_at: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: createdAt(),
+    updated_at: updatedAt(),
     user_id: text("user_id").references(() => usersTable.id, {
       onDelete: "cascade",
     }),
   },
   (table) => [
     index("namespaces_user_id_idx").on(table.user_id),
-    // Allow same name for different users, but unique within user scope (including public)
     unique("namespaces_name_user_unique_idx").on(table.name, table.user_id),
-    sql`CONSTRAINT namespaces_name_regex_check CHECK (
-        name ~ '^[a-zA-Z0-9_-]+$'
-      )`,
   ],
 );
 
-// Endpoints table - public routing endpoints that map to namespaces
-export const endpointsTable = pgTable(
+export const endpointsTable = sqliteTable(
   "endpoints",
   {
-    uuid: uuid("uuid").primaryKey().defaultRandom(),
+    uuid: uuidPk(),
     name: text("name").notNull(),
     description: text("description"),
-    namespace_uuid: uuid("namespace_uuid")
+    namespace_uuid: text("namespace_uuid")
       .notNull()
       .references(() => namespacesTable.uuid, { onDelete: "cascade" }),
-    enable_api_key_auth: boolean("enable_api_key_auth").notNull().default(true),
-    enable_oauth: boolean("enable_oauth").notNull().default(false),
-    enable_max_rate: boolean("enable_max_rate").notNull().default(false),
-    enable_client_max_rate: boolean("enable_client_max_rate")
+    enable_api_key_auth: integer("enable_api_key_auth", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    enable_oauth: integer("enable_oauth", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    enable_max_rate: integer("enable_max_rate", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    enable_client_max_rate: integer("enable_client_max_rate", {
+      mode: "boolean",
+    })
       .notNull()
       .default(false),
     max_rate: integer("max_rate"),
@@ -288,18 +233,16 @@ export const endpointsTable = pgTable(
     client_max_rate_seconds: integer("client_max_rate_seconds"),
     client_max_rate_strategy: text("client_max_rate_strategy"),
     client_max_rate_strategy_key: text("client_max_rate_strategy_key"),
-    use_query_param_auth: boolean("use_query_param_auth")
+    use_query_param_auth: integer("use_query_param_auth", { mode: "boolean" })
       .notNull()
       .default(false),
-    enable_metamcp_admin_tools: boolean("enable_metamcp_admin_tools")
+    enable_metamcp_admin_tools: integer("enable_metamcp_admin_tools", {
+      mode: "boolean",
+    })
       .notNull()
       .default(false),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updated_at: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: createdAt(),
+    updated_at: updatedAt(),
     user_id: text("user_id").references(() => usersTable.id, {
       onDelete: "cascade",
     }),
@@ -307,31 +250,26 @@ export const endpointsTable = pgTable(
   (table) => [
     index("endpoints_namespace_uuid_idx").on(table.namespace_uuid),
     index("endpoints_user_id_idx").on(table.user_id),
-    // Endpoints must be globally unique because they're used in URLs like /metamcp/[name]/sse
     unique("endpoints_name_unique").on(table.name),
-    sql`CONSTRAINT endpoints_name_url_compatible_check CHECK (
-        name ~ '^[a-zA-Z0-9_-]+$'
-      )`,
   ],
 );
 
-// Many-to-many relationship table between namespaces and mcp servers
-export const namespaceServerMappingsTable = pgTable(
+export const namespaceServerMappingsTable = sqliteTable(
   "namespace_server_mappings",
   {
-    uuid: uuid("uuid").primaryKey().defaultRandom(),
-    namespace_uuid: uuid("namespace_uuid")
+    uuid: uuidPk(),
+    namespace_uuid: text("namespace_uuid")
       .notNull()
       .references(() => namespacesTable.uuid, { onDelete: "cascade" }),
-    mcp_server_uuid: uuid("mcp_server_uuid")
+    mcp_server_uuid: text("mcp_server_uuid")
       .notNull()
       .references(() => mcpServersTable.uuid, { onDelete: "cascade" }),
-    status: mcpServerStatusEnum("status")
+    status: text("status", {
+      enum: toEnumTuple(McpServerStatusEnum.options),
+    })
       .notNull()
       .default(McpServerStatusEnum.enum.ACTIVE),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: createdAt(),
   },
   (table) => [
     index("namespace_server_mappings_namespace_uuid_idx").on(
@@ -348,32 +286,31 @@ export const namespaceServerMappingsTable = pgTable(
   ],
 );
 
-// Many-to-many relationship table between namespaces and tools for status control and overrides
-export const namespaceToolMappingsTable = pgTable(
+export const namespaceToolMappingsTable = sqliteTable(
   "namespace_tool_mappings",
   {
-    uuid: uuid("uuid").primaryKey().defaultRandom(),
-    namespace_uuid: uuid("namespace_uuid")
+    uuid: uuidPk(),
+    namespace_uuid: text("namespace_uuid")
       .notNull()
       .references(() => namespacesTable.uuid, { onDelete: "cascade" }),
-    tool_uuid: uuid("tool_uuid")
+    tool_uuid: text("tool_uuid")
       .notNull()
       .references(() => toolsTable.uuid, { onDelete: "cascade" }),
-    mcp_server_uuid: uuid("mcp_server_uuid")
+    mcp_server_uuid: text("mcp_server_uuid")
       .notNull()
       .references(() => mcpServersTable.uuid, { onDelete: "cascade" }),
-    status: mcpServerStatusEnum("status")
+    status: text("status", {
+      enum: toEnumTuple(McpServerStatusEnum.options),
+    })
       .notNull()
       .default(McpServerStatusEnum.enum.ACTIVE),
     override_name: text("override_name"),
     override_title: text("override_title"),
     override_description: text("override_description"),
-    override_annotations: jsonb("override_annotations")
-      .$type<Record<string, unknown> | null>()
-      .default(sql`NULL`),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    override_annotations: text("override_annotations", {
+      mode: "json",
+    }).$type<Record<string, unknown> | null>(),
+    created_at: createdAt(),
   },
   (table) => [
     index("namespace_tool_mappings_namespace_uuid_idx").on(
@@ -391,20 +328,17 @@ export const namespaceToolMappingsTable = pgTable(
   ],
 );
 
-// API Keys table
-export const apiKeysTable = pgTable(
+export const apiKeysTable = sqliteTable(
   "api_keys",
   {
-    uuid: uuid("uuid").primaryKey().defaultRandom(),
+    uuid: uuidPk(),
     name: text("name").notNull(),
     key: text("key").notNull().unique(),
     user_id: text("user_id").references(() => usersTable.id, {
       onDelete: "cascade",
     }),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    is_active: boolean("is_active").notNull().default(true),
+    created_at: createdAt(),
+    is_active: integer("is_active", { mode: "boolean" }).notNull().default(true),
   },
   (table) => [
     index("api_keys_user_id_idx").on(table.user_id),
@@ -414,12 +348,12 @@ export const apiKeysTable = pgTable(
   ],
 );
 
-export const mcpRequestAuditLogsTable = pgTable(
+export const mcpRequestAuditLogsTable = sqliteTable(
   "mcp_request_audit_logs",
   {
-    uuid: uuid("uuid").primaryKey().defaultRandom(),
+    uuid: uuidPk(),
     endpoint_name: text("endpoint_name").notNull(),
-    namespace_uuid: uuid("namespace_uuid").references(
+    namespace_uuid: text("namespace_uuid").references(
       () => namespacesTable.uuid,
       {
         onDelete: "set null",
@@ -427,7 +361,7 @@ export const mcpRequestAuditLogsTable = pgTable(
     ),
     session_id: text("session_id").notNull(),
     auth_method: text("auth_method").notNull(),
-    api_key_uuid: uuid("api_key_uuid").references(() => apiKeysTable.uuid, {
+    api_key_uuid: text("api_key_uuid").references(() => apiKeysTable.uuid, {
       onDelete: "set null",
     }),
     api_key_user_id: text("api_key_user_id").references(() => usersTable.id, {
@@ -436,7 +370,7 @@ export const mcpRequestAuditLogsTable = pgTable(
     oauth_user_id: text("oauth_user_id").references(() => usersTable.id, {
       onDelete: "set null",
     }),
-    mcp_server_uuid: uuid("mcp_server_uuid").references(
+    mcp_server_uuid: text("mcp_server_uuid").references(
       () => mcpServersTable.uuid,
       {
         onDelete: "set null",
@@ -444,12 +378,10 @@ export const mcpRequestAuditLogsTable = pgTable(
     ),
     mcp_server_name: text("mcp_server_name"),
     tool_name: text("tool_name").notNull(),
-    status: mcpRequestAuditStatusEnum("status").notNull(),
+    status: text("status", { enum: ["SUCCESS", "ERROR"] }).notNull(),
     duration_ms: integer("duration_ms").notNull(),
     error_message: text("error_message"),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: createdAt(),
   },
   (table) => [
     index("mcp_request_audit_logs_created_at_idx").on(table.created_at),
@@ -492,57 +424,46 @@ export const mcpRequestAuditLogsTable = pgTable(
   ],
 );
 
-// Configuration table for app-wide settings
-export const configTable = pgTable("config", {
+export const configTable = sqliteTable("config", {
   id: text("id").primaryKey(),
   value: text("value").notNull(),
   description: text("description"),
-  created_at: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updated_at: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  created_at: createdAt(),
+  updated_at: updatedAt(),
 });
 
-// OAuth Registered Clients table
-export const oauthClientsTable = pgTable("oauth_clients", {
+export const oauthClientsTable = sqliteTable("oauth_clients", {
   client_id: text("client_id").primaryKey(),
   client_secret: text("client_secret"),
   client_name: text("client_name").notNull(),
-  redirect_uris: text("redirect_uris")
-    .array()
+  redirect_uris: text("redirect_uris", { mode: "json" })
+    .$type<string[]>()
     .notNull()
-    .default(sql`'{}'::text[]`),
-  grant_types: text("grant_types")
-    .array()
+    .default([]),
+  grant_types: text("grant_types", { mode: "json" })
+    .$type<string[]>()
     .notNull()
-    .default(sql`'{"authorization_code","refresh_token"}'::text[]`),
-  response_types: text("response_types")
-    .array()
+    .default(["authorization_code", "refresh_token"]),
+  response_types: text("response_types", { mode: "json" })
+    .$type<string[]>()
     .notNull()
-    .default(sql`'{"code"}'::text[]`),
+    .default(["code"]),
   token_endpoint_auth_method: text("token_endpoint_auth_method")
     .notNull()
     .default("none"),
   scope: text("scope").default("admin"),
   client_uri: text("client_uri"),
   logo_uri: text("logo_uri"),
-  contacts: text("contacts").array(),
+  contacts: text("contacts", { mode: "json" }).$type<string[] | null>(),
   tos_uri: text("tos_uri"),
   policy_uri: text("policy_uri"),
   software_id: text("software_id"),
   software_version: text("software_version"),
-  created_at: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updated_at: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  created_at: createdAt(),
+  updated_at: updatedAt(),
 });
 
-// OAuth Authorization Codes table
-export const oauthAuthorizationCodesTable = pgTable(
+export const oauthAuthorizationCodesTable = sqliteTable(
   "oauth_authorization_codes",
   {
     code: text("code").primaryKey(),
@@ -556,10 +477,8 @@ export const oauthAuthorizationCodesTable = pgTable(
       .references(() => usersTable.id, { onDelete: "cascade" }),
     code_challenge: text("code_challenge"),
     code_challenge_method: text("code_challenge_method"),
-    expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    expires_at: integer("expires_at", { mode: "timestamp" }).notNull(),
+    created_at: createdAt(),
   },
   (table) => [
     index("oauth_authorization_codes_client_id_idx").on(table.client_id),
@@ -568,8 +487,7 @@ export const oauthAuthorizationCodesTable = pgTable(
   ],
 );
 
-// OAuth Access Tokens table
-export const oauthAccessTokensTable = pgTable(
+export const oauthAccessTokensTable = sqliteTable(
   "oauth_access_tokens",
   {
     access_token: text("access_token").primaryKey(),
@@ -580,14 +498,12 @@ export const oauthAccessTokensTable = pgTable(
       .notNull()
       .references(() => usersTable.id, { onDelete: "cascade" }),
     scope: text("scope").notNull().default("admin"),
-    expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
+    expires_at: integer("expires_at", { mode: "timestamp" }).notNull(),
     refresh_token: text("refresh_token"),
-    refresh_token_expires_at: timestamp("refresh_token_expires_at", {
-      withTimezone: true,
+    refresh_token_expires_at: integer("refresh_token_expires_at", {
+      mode: "timestamp",
     }),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: createdAt(),
   },
   (table) => [
     index("oauth_access_tokens_client_id_idx").on(table.client_id),

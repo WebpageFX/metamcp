@@ -5,7 +5,6 @@ import {
   McpServerUpdateInput,
 } from "@repo/zod-types";
 import { and, desc, eq, isNull, or } from "drizzle-orm";
-import { DatabaseError } from "pg";
 import { z } from "zod";
 
 import logger from "@/utils/logger";
@@ -13,7 +12,30 @@ import logger from "@/utils/logger";
 import { db } from "../index";
 import { mcpServersTable } from "../schema";
 
-// Helper function to handle PostgreSQL errors
+function sqliteErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    const cause = error.cause;
+    if (cause instanceof Error && cause.message) {
+      return `${error.message} ${cause.message}`;
+    }
+    return error.message;
+  }
+  return String(error);
+}
+
+function sqliteErrorCode(error: unknown): string | undefined {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string") {
+      return code;
+    }
+  }
+  if (error instanceof Error && error.cause) {
+    return sqliteErrorCode(error.cause);
+  }
+  return undefined;
+}
+
 function handleDatabaseError(
   error: unknown,
   operation: string,
@@ -21,44 +43,25 @@ function handleDatabaseError(
 ): never {
   logger.error(`Database error in ${operation}:`, error);
 
-  // Extract the actual PostgreSQL error from Drizzle's error structure
-  let pgError: DatabaseError | undefined;
+  const message = sqliteErrorMessage(error);
+  const code = sqliteErrorCode(error);
+  const isUnique =
+    code === "SQLITE_CONSTRAINT_UNIQUE" ||
+    code === "SQLITE_CONSTRAINT" ||
+    /UNIQUE constraint failed/i.test(message);
 
-  if (
-    error instanceof Error &&
-    "cause" in error &&
-    error.cause instanceof DatabaseError
-  ) {
-    // Drizzle wraps the PostgreSQL error in the cause property
-    pgError = error.cause;
-  } else if (error instanceof DatabaseError) {
-    // Direct PostgreSQL error
-    pgError = error;
+  if (isUnique && /mcp_servers_name_user_unique_idx|mcp_servers\.name/i.test(message)) {
+    throw new Error(
+      `Server name "${serverName}" already exists. Server names must be unique within your scope.`,
+    );
   }
 
-  if (pgError) {
-    // Handle unique constraint violation for server name
-    if (
-      pgError.code === "23505" &&
-      pgError.constraint === "mcp_servers_name_user_unique_idx"
-    ) {
-      throw new Error(
-        `Server name "${serverName}" already exists. Server names must be unique within your scope.`,
-      );
-    }
-
-    // Handle regex constraint violation for server name
-    if (
-      pgError.code === "23514" &&
-      pgError.constraint === "mcp_servers_name_regex_check"
-    ) {
-      throw new Error(
-        `Server name "${serverName}" is invalid. Server names must only contain letters, numbers, underscores, and hyphens.`,
-      );
-    }
+  if (isUnique) {
+    throw new Error(
+      `Server name "${serverName}" already exists. Server names must be unique within your scope.`,
+    );
   }
 
-  // For any other database errors, throw a generic user-friendly message
   throw new Error(
     `Failed to ${operation} MCP server. Please check your input and try again.`,
   );
@@ -191,40 +194,17 @@ export class McpServersRepository {
     try {
       return await db.insert(mcpServersTable).values(servers).returning();
     } catch (error: unknown) {
-      // For bulk operations, we don't have a specific server name to report
-      // Extract the actual PostgreSQL error from Drizzle's error structure
-      let pgError: DatabaseError | undefined;
+      const message = sqliteErrorMessage(error);
+      const code = sqliteErrorCode(error);
+      const isUnique =
+        code === "SQLITE_CONSTRAINT_UNIQUE" ||
+        code === "SQLITE_CONSTRAINT" ||
+        /UNIQUE constraint failed/i.test(message);
 
-      if (
-        error instanceof Error &&
-        "cause" in error &&
-        error.cause instanceof DatabaseError
-      ) {
-        pgError = error.cause;
-      } else if (error instanceof DatabaseError) {
-        pgError = error;
-      }
-
-      if (pgError) {
-        // Handle unique constraint violation for server name
-        if (
-          pgError.code === "23505" &&
-          pgError.constraint === "mcp_servers_name_user_unique_idx"
-        ) {
-          throw new Error(
-            "One or more server names already exist. Server names must be unique within your scope.",
-          );
-        }
-
-        // Handle regex constraint violation for server name
-        if (
-          pgError.code === "23514" &&
-          pgError.constraint === "mcp_servers_name_regex_check"
-        ) {
-          throw new Error(
-            "One or more server names are invalid. Server names must only contain letters, numbers, underscores, and hyphens.",
-          );
-        }
+      if (isUnique) {
+        throw new Error(
+          "One or more server names already exist. Server names must be unique within your scope.",
+        );
       }
 
       logger.error("Database error in bulk create:", error);

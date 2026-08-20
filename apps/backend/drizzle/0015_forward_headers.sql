@@ -1,1 +1,0 @@
-ALTER TABLE "mcp_servers" ADD COLUMN "forward_headers" jsonb DEFAULT '{}'::jsonb NOT NULL;

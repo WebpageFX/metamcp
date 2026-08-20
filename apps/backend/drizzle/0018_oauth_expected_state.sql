@@ -1,1 +1,0 @@
-ALTER TABLE "oauth_sessions" ADD COLUMN "expected_state" text;

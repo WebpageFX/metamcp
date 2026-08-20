@@ -42,6 +42,10 @@ yarn-error.log*
 .vscode/
 .idea/
 
-# Docker Files
-docker-compose.override.yml
-compose.override.yml
+# SQLite
+data/*.db
+data/*.db-wal
+data/*.db-shm
+*.db
+*.db-wal
+*.db-shm

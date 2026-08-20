@@ -1,8 +1,13 @@
 services:
   app:
     container_name: metamcp
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: ghcr.io/fanywebfx/metamcp:ai-dev
-    pull_policy: always
+    # Use a local image when present; pull from GHCR only if missing.
+    # Override with: docker compose pull && docker compose up -d
+    pull_policy: missing
     env_file:
       - path: .env
         required: false
@@ -153,7 +158,9 @@ services:
       - "host.docker.internal:host-gateway"
     restart: "no"
     volumes:
-      - sqlite_data:/data
+      # External volume survives image rebuilds / MetaMCP upgrades.
+      # Create once: docker volume create global_metamcp_sqlite_data
+      - global_metamcp_sqlite_data:/data
       # Persist the uv cache across container recreates. Without this, every
       # `docker compose up -d`/recreate wipes the writable layer and the next
       # `uvx <pkg>@latest` spawn for each STDIO server cold-installs from
@@ -165,8 +172,9 @@ services:
       - metamcp-network
 
 volumes:
-  sqlite_data:
-    driver: local
+  global_metamcp_sqlite_data:
+    external: true
+    name: global_metamcp_sqlite_data
   uv_cache:
     driver: local
 

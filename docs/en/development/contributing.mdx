@@ -12,7 +12,7 @@ We welcome contributions to MetaMCP! This comprehensive guide will help you get 
 Before contributing, ensure you have:
 
 - **Node.js 18+** and **pnpm** installed
-- **Docker** for running PostgreSQL and testing
+- **Docker** (optional, for Compose / Dev Containers)
 - **Git** for version control
 - **Basic understanding** of TypeScript, React, and MCP protocol
 
@@ -46,22 +46,15 @@ Before contributing, ensure you have:
     Set up your development environment:
     
     ```bash
-    cp example.env .env
+    cp example.env .env.local
     ```
     
-    Modify the `.env` file as needed for your development setup.
+    Modify the `.env.local` file as needed for your development setup.
   </Accordion>
 
   <Accordion icon="database" title="Database Setup">
-    Start PostgreSQL using Docker:
-    
-    ```bash
-    docker compose up -d postgres
-    # or start full stack
-    docker compose up -d
-    ```
+    MetaMCP uses SQLite. After copying `example.env` to `.env.local`, apply migrations:
 
-    First time migration (edit `.env.local` first)
     ```bash
     cd apps/backend
 
@@ -292,7 +285,7 @@ When making database schema changes:
     pnpm db:generate
     
     # Apply migrations
-    pnpm db:migrate:dev # which uses env.local for PG related env vars
+    pnpm db:migrate:dev # uses .env.local for DATABASE_URL
     
     # Reset database (development only)
     pnpm db:reset

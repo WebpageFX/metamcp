@@ -42,7 +42,8 @@
     },
     "onlyBuiltDependencies": [
       "esbuild",
-      "sharp"
+      "sharp",
+      "better-sqlite3"
     ]
   }
 }
