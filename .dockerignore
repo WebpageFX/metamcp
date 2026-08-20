@@ -9,54 +9,49 @@ pnpm-debug.log*
 .next
 dist
 build
+backend-deploy
 
 # Environment files
 .env
 .env.local
 .env.production
+.env*.local
 
-# Git
+# Git / VCS
 .git
 .gitignore
+.github
 
-# Docker
-Dockerfile*
-docker-compose*.yml
-.dockerignore
-
-# IDE
+# IDE / OS
 .vscode
 .idea
+.DS_Store
+Thumbs.db
 *.swp
 *.swo
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
+# Logs / coverage / temp
 logs
 *.log
-
-# Runtime data
 pids
 *.pid
 *.seed
 *.pid.lock
-
-# Coverage directory used by tools like istanbul
 coverage
-
-# Temporary folders
 tmp
 temp
+**/error.log
+**/app.log
 
-# Documentation
+# Docs (not needed in image)
 docs
 *.md
 
-# Test files
+# Dev / test / deploy extras
+.devcontainer
+deploy
 **/*.test.js
 **/*.test.ts
 **/*.spec.js
 **/*.spec.ts
+**/__tests__

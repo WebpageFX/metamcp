@@ -13,8 +13,7 @@ export default defineConfig({
   minify: false,
   external: [
     "@modelcontextprotocol/sdk",
-    "@repo/trpc",
-    "@repo/zod-types",
+    // Bundle @repo/* into dist so Docker deploy does not need workspace package dist/
     "@trpc/server",
     "basic-auth",
     "better-auth",

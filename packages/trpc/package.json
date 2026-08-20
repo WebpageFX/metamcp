@@ -33,5 +33,8 @@
       "types": "./dist/router.d.ts",
       "default": "./dist/router.js"
     }
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }
