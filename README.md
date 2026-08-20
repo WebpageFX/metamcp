@@ -12,8 +12,8 @@
   <a href="https://opensource.org/licenses/MIT" style="text-decoration: none;">
     <img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square" alt="MIT License" style="max-width: 100%;">
   </a>
-  <a href="https://github.com/metatool-ai/metamcp/pkgs/container/metamcp" style="text-decoration: none;">
-    <img src="https://img.shields.io/badge/GHCR-available-green.svg?style=flat-square&logo=github" alt="GHCR" style="max-width: 100%;">
+  <a href="https://github.com/fanywebfx/metamcp/pkgs/container/metamcp" style="text-decoration: none;">
+    <img src="https://img.shields.io/badge/GHCR-ghcr.io/fanywebfx/metamcp:ai-dev-green.svg?style=flat-square&logo=github" alt="GHCR" style="max-width: 100%;">
   </a>
   <a href="https://deepwiki.com/metatool-ai/metamcp"><img src="https://img.shields.io/badge/DeepWiki-metatool--ai%2Fmetamcp-blue.svg?style=flat-square&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAAyCAYAAAAnWDnqAAAAAXNSR0IArs4c6QAAA05JREFUaEPtmUtyEzEQhtWTQyQLHNak2AB7ZnyXZMEjXMGeK/AIi+QuHrMnbChYY7MIh8g01fJoopFb0uhhEqqcbWTp06/uv1saEDv4O3n3dV60RfP947Mm9/SQc0ICFQgzfc4CYZoTPAswgSJCCUJUnAAoRHOAUOcATwbmVLWdGoH//PB8mnKqScAhsD0kYP3j/Yt5LPQe2KvcXmGvRHcDnpxfL2zOYJ1mFwrryWTz0advv1Ut4CJgf5uhDuDj5eUcAUoahrdY/56ebRWeraTjMt/00Sh3UDtjgHtQNHwcRGOC98BJEAEymycmYcWwOprTgcB6VZ5JK5TAJ+fXGLBm3FDAmn6oPPjR4rKCAoJCal2eAiQp2x0vxTPB3ALO2CRkwmDy5WohzBDwSEFKRwPbknEggCPB/imwrycgxX2NzoMCHhPkDwqYMr9tRcP5qNrMZHkVnOjRMWwLCcr8ohBVb1OMjxLwGCvjTikrsBOiA6fNyCrm8V1rP93iVPpwaE+gO0SsWmPiXB+jikdf6SizrT5qKasx5j8ABbHpFTx+vFXp9EnYQmLx02h1QTTrl6eDqxLnGjporxl3NL3agEvXdT0WmEost648sQOYAeJS9Q7bfUVoMGnjo4AZdUMQku50McDcMWcBPvr0SzbTAFDfvJqwLzgxwATnCgnp4wDl6Aa+Ax283gghmj+vj7feE2KBBRMW3FzOpLOADl0Isb5587h/U4gGvkt5v60Z1VLG8BhYjbzRwyQZemwAd6cCR5/XFWLYZRIMpX39AR0tjaGGiGzLVyhse5C9RKC6ai42ppWPKiBagOvaYk8lO7DajerabOZP46Lby5wKjw1HCRx7p9sVMOWGzb/vA1hwiWc6jm3MvQDTogQkiqIhJV0nBQBTU+3okKCFDy9WwferkHjtxib7t3xIUQtHxnIwtx4mpg26/HfwVNVDb4oI9RHmx5WGelRVlrtiw43zboCLaxv46AZeB3IlTkwouebTr1y2NjSpHz68WNFjHvupy3q8TFn3Hos2IAk4Ju5dCo8B3wP7VPr/FGaKiG+T+v+TQqIrOqMTL1VdWV1DdmcbO8KXBz6esmYWYKPwDL5b5FA1a0hwapHiom0r/cKaoqr+27/XcrS5UwSMbQAAAABJRU5ErkJggg==" alt="DeepWiki: MetaMCP"></a>
 </div>
@@ -158,21 +158,16 @@ Similar to the official MCP inspector, but with **saved server configs** - MetaM
 Clone repo, prepare `.env`, and start with docker compose:
 
 ```bash
-git clone https://github.com/metatool-ai/metamcp.git
+git clone https://github.com/fanywebfx/metamcp.git
 cd metamcp
 cp example.env .env
 docker compose up -d
+# pulls ghcr.io/fanywebfx/metamcp:ai-dev
 ```
 
 If you modify APP_URL env vars, make sure you only access from the APP_URL, because MetaMCP enforces CORS policy on the URL, so no other URL is accessible.
 
-Note that the pg volume name may collide with your other pg dockers, which is global, consider rename it in `docker-compose.yml`:
-
-```
-volumes:
-  metamcp_postgres_data:
-    driver: local
-```
+SQLite data is stored in a Compose volume (`sqlite_data`). Rename that volume in `docker-compose.yml` if it collides with another project.
 
 ### **📦 Build development environment with Dev Containers (VSCode/Cursor)**
 
@@ -182,11 +177,13 @@ It only requires that you have an environment running Docker or a similar altern
 
 1. First, clone the MetaMCP source code, open project in Visual Studio Code.
 ```bash
-git clone https://github.com/metatool-ai/metamcp.git
+git clone https://github.com/fanywebfx/metamcp.git
 cd metamcp
 code .
 ```
 2. Switch to Dev Containers. Open the VSCode Command Palette, and execute `Dev Containers: Reopen in Container`.
+
+You do not need to create `.env` first. The container copies `example.env` to `.env.local` on create, then installs dependencies and migrates the SQLite file.
 
 VSCode will open the Dev Containers project in a new window, where it will build the runtime and install the toolchain according to the `Dockerfile` before starting the connection and finally installing the MetaMCP dependencies.
 <img width="895" height="153" alt="image" src="https://github.com/user-attachments/assets/d3e1420d-43c1-4ed6-9229-b91ea09c142a" />
@@ -201,10 +198,12 @@ After finished, you can run `pnpm dev` to start the development server.
 
 ### **💻 Local Development**
 
-Still recommend running postgres through docker for easy setup:
+SQLite is created automatically at `data/metamcp.db` (relative to the backend working directory unless you set `DATABASE_URL`).
 
 ```bash
+cp example.env .env.local
 pnpm install
+cd apps/backend && pnpm db:migrate:dev && cd ../..
 pnpm dev
 ```
 

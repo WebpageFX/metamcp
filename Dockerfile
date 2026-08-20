@@ -5,9 +5,12 @@ FROM ghcr.io/astral-sh/uv:debian AS base
 RUN apt-get update && apt-get install -y \
     curl \
     gnupg \
+    python3 \
+    make \
+    g++ \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
-    && npm install -g pnpm@10.12.0 \
+    && npm install -g pnpm@10.29.3 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -62,20 +65,20 @@ FROM base AS runner
 WORKDIR /app
 
 # OCI image labels
-LABEL org.opencontainers.image.source="https://github.com/metatool-ai/metamcp"
+LABEL org.opencontainers.image.source="https://github.com/fanywebfx/metamcp"
 LABEL org.opencontainers.image.description="MetaMCP - aggregates MCP servers into a unified MetaMCP"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.title="MetaMCP"
-LABEL org.opencontainers.image.vendor="metatool-ai"
+LABEL org.opencontainers.image.vendor="fanywebfx"
 
 # Install curl for health checks
-RUN apt-get update && apt-get install -y curl postgresql-client && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y curl python3 make g++ && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user with proper home directory
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 --home /home/nextjs nextjs && \
-    mkdir -p /home/nextjs/.cache/node/corepack /home/nextjs/.cache/uv && \
-    chown -R nextjs:nodejs /home/nextjs
+    mkdir -p /home/nextjs/.cache/node/corepack /home/nextjs/.cache/uv /data && \
+    chown -R nextjs:nodejs /home/nextjs /data
 
 # Copy built applications
 COPY --from=builder --chown=nextjs:nodejs /app/apps/frontend/.next ./apps/frontend/.next

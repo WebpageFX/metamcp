@@ -19,7 +19,7 @@ description: "在几分钟内启动 MetaMCP 并配置您的第一个 MCP 服务�
     从 GitHub 克隆 MetaMCP 并导航到项目目录：
     
     ```bash
-    git clone https://github.com/metatool-ai/metamcp.git
+    git clone https://github.com/fanywebfx/metamcp.git
     cd metamcp
     ```
   </Accordion>
@@ -34,7 +34,7 @@ description: "在几分钟内启动 MetaMCP 并配置您的第一个 MCP 服务�
     <Note>
       如果您在 `.env` 文件中修改了 `APP_URL`，请确保仅从该 URL 访问 MetaMCP，因为 CORS 策略强制执行。
     </Note>
-    <Warning>在生产环境中，请确保修改 POSTGRES_PASSWORD 和 BETTER_AUTH_SECRET。同时使用 HTTPS。生成密钥的典型方法是 `openssl rand -hex 32 | base64`</Warning>
+    <Warning>在生产环境中，请确保修改 BETTER_AUTH_SECRET。同时使用 HTTPS。生成密钥的典型方法是 `openssl rand -hex 32 | base64`</Warning>
   </Accordion>
 
   <Accordion icon="docker" title="使用 Docker Compose 启动">
@@ -46,7 +46,7 @@ description: "在几分钟内启动 MetaMCP 并配置您的第一个 MCP 服务�
     
     这将启动：
     - MetaMCP 全栈 Docker 镜像
-    - PostgreSQL 数据库
+    - SQLite 数据库文件（Compose 卷）
     
     <Tip>
       首次启动可能需要几分钟，因为需要拉取和下载 Docker 镜像。
@@ -317,7 +317,7 @@ description: "在几分钟内启动 MetaMCP 并配置您的第一个 MCP 服务�
   <Accordion icon="warning" title="常见问题">
     **CORS 错误**：确保您从 `APP_URL` 中指定的 URL 访问 MetaMCP。
     
-    **数据库连接**：使用 `docker ps` 检查 PostgreSQL 容器是否正在运行。
+    **数据库连接**：检查 SQLite 卷已挂载，且 `DATABASE_URL` 指向可写路径。
     
     **内存问题**：MetaMCP 需要至少 2GB RAM 以获得最佳性能。
     

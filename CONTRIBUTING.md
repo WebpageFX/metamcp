@@ -6,7 +6,7 @@ We welcome contributions to MetaMCP! This guide will help you get started.
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/metatool-ai/metamcp.git
+   git clone https://github.com/fanywebfx/metamcp.git
    cd metamcp
    ```
 
@@ -17,7 +17,7 @@ We welcome contributions to MetaMCP! This guide will help you get started.
 
 3. Set up environment:
    ```bash
-   cp example.env .env
+   cp example.env .env.local
    ```
 
 4. Start development:
@@ -40,14 +40,13 @@ pnpm run dev:docker:clean
 ```
 
 **Features:**
-- 🔄 **Hot Reload**: Both frontend (Next.js) and backend (Express) automatically reload on code changes
-- 🐳 **Containerized**: Full development environment in Docker with PostgreSQL
-- 📊 **Ports**: Frontend on 12008, Backend on 12009, PostgreSQL on 9433
-- 🛠️ **Development Tools**: Includes all necessary development dependencies and tools
+- Hot reload for frontend (Next.js) and backend (Express)
+- Containerized development with an embedded SQLite database
+- Ports: Frontend on 12008, Backend on 12009
 
 **Requirements:**
 - Docker and Docker Compose installed
-- `.env` file configured (copy from `example.env`)
+- Optional `.env` / `.env.local` (copied from `example.env` if missing)
 
 **Note:** The first run may take longer as it builds the development image. Subsequent runs will be faster.
 

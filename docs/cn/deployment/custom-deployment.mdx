@@ -126,7 +126,7 @@ newgrp docker
 
 ```bash
 cd /opt
-sudo git clone https://github.com/metatool-ai/metamcp.git
+sudo git clone https://github.com/fanywebfx/metamcp.git
 sudo chown -R $USER:$USER metamcp
 cd metamcp
 ```
@@ -143,7 +143,7 @@ cp example.env .env
 nano .env
 ```
 
-**⚠️ 重要安全说明**：因为这是生产环境，请确保您修改 `POSTGRES_PASSWORD` 和 `BETTER_AUTH_SECRET` 的默认值。同时确保使用 HTTPS。生成安全密钥的典型方法是：
+**⚠️ 重要安全说明**：因为这是生产环境，请确保您修改 `BETTER_AUTH_SECRET` 的默认值。同时确保使用 HTTPS。生成安全密钥的典型方法是：
 
 ```bash
 openssl rand -hex 32 | base64
@@ -155,9 +155,8 @@ openssl rand -hex 32 | base64
 # 您的域名 URL（生产环境必须使用 HTTPS）
 APP_URL=https://yourdomain.com
 
-# 数据库 - 从默认值更改密码！
-DATABASE_URL=postgresql://postgres:YOUR_SECURE_PASSWORD@db:5432/metamcp
-POSTGRES_PASSWORD=YOUR_SECURE_PASSWORD
+# Compose 卷内的 SQLite 文件（默认：/data/metamcp.db）
+DATABASE_URL=file:/data/metamcp.db
 
 # 生成安全密钥 - 不要使用示例值！
 BETTER_AUTH_SECRET=your-super-secret-key-here
@@ -181,7 +180,7 @@ nano docker-compose.yml
 
 ```yaml
 volumes:
-  metamcp_postgres_data:
+  metamcp_sqlite_data:
     driver: local
 ```
 

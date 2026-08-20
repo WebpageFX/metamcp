@@ -12,8 +12,8 @@
   <a href="https://opensource.org/licenses/MIT" style="text-decoration: none;">
     <img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square" alt="MIT License" style="max-width: 100%;">
   </a>
-  <a href="https://github.com/metatool-ai/metamcp/pkgs/container/metamcp" style="text-decoration: none;">
-    <img src="https://img.shields.io/badge/GHCR-available-green.svg?style=flat-square&logo=github" alt="GHCR" style="max-width: 100%;">
+  <a href="https://github.com/fanywebfx/metamcp/pkgs/container/metamcp" style="text-decoration: none;">
+    <img src="https://img.shields.io/badge/GHCR-ghcr.io/fanywebfx/metamcp:ai-dev-green.svg?style=flat-square&logo=github" alt="GHCR" style="max-width: 100%;">
   </a>
   <a href="https://deepwiki.com/metatool-ai/metamcp"><img src="https://img.shields.io/badge/DeepWiki-metatool--ai%2Fmetamcp-blue.svg?style=flat-square&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAAyCAYAAAAnWDnqAAAAAXNSR0IArs4c6QAAA05JREFUaEPtmUtyEzEQhtWTQyQLHNak2AB7ZnyXZMEjXMGeK/AIi+QuHrMnbChYY7MIh8g01fJoopFb0uhhEqqcbWTp06/uv1saEDv4O3n3dV60RfP947Mm9/SQc0ICFQgzfc4CYZoTPAswgSJCCUJUnAAoRHOAUOcATwbmVLWdGoH//PB8mnKqScAhsD0kYP3j/Yt5LPQe2KvcXmGvRHcDnpxfL2zOYJ1mFwrryWTz0advv1Ut4CJgf5uhDuDj5eUcAUoahrdY/56ebRWeraTjMt/00Sh3UDtjgHtQNHwcRGOC98BJEAEymycmYcWwOprTgcB6VZ5JK5TAJ+fXGLBm3FDAmn6oPPjR4rKCAoJCal2eAiQp2x0vxTPB3ALO2CRkwmDy5WohzBDwSEFKRwPbknEggCPB/imwrycgxX2NzoMCHhPkDwqYMr9tRcP5qNrMZHkVnOjRMWwLCcr8ohBVb1OMjxLwGCvjTikrsBOiA6fNyCrm8V1rP93iVPpwaE+gO0SsWmPiXB+jikdf6SizrT5qKasx5j8ABbHpFTx+vFXp9EnYQmLx02h1QTTrl6eDqxLnGjporxl3NL3agEvXdT0WmEost648sQOYAeJS9Q7bfUVoMGnjo4AZdUMQku50McDcMWcBPvr0SzbTAFDfvJqwLzgxwATnCgnp4wDl6Aa+Ax283gghmj+vj7feE2KBBRMW3FzOpLOADl0Isb5587h/U4gGvkt5v60Z1VLG8BhYjbzRwyQZemwAd6cCR5/XFWLYZRIMpX39AR0tjaGGiGzLVyhse5C9RKC6ai42ppWPKiBagOvaYk8lO7DajerabOZP46Lby5wKjw1HCRx7p9sVMOWGzb/vA1hwiWc6jm3MvQDTogQkiqIhJV0nBQBTU+3okKCFDy9WwferkHjtxib7t3xIUQtHxnIwtx4mpg26/HfwVNVDb4oI9RHmx5WGelRVlrtiw43zboCLaxv46AZeB3IlTkwouebTr1y2NjSpHz68WNFjHvupy3q8TFn3Hos2IAk4Ju5dCo8B3wP7VPr/FGaKiG+T+v+TQqIrOqMTL1VdWV1DdmcbO8KXBz6esmYWYKPwDL5b5FA1a0hwapHiom0r/cKaoqr+27/XcrS5UwSMbQAAAABJRU5ErkJggg==" alt="DeepWiki: MetaMCP"></a>
 </div>
@@ -115,7 +115,7 @@ MCP 服务器配置，告诉 MetaMCP 如何启动 MCP 服务器。
 克隆仓库，准备 `.env` 文件，并用 docker compose 启动：
 
 ```bash
-git clone https://github.com/metatool-ai/metamcp.git
+git clone https://github.com/fanywebfx/metamcp.git
 cd metamcp
 cp example.env .env
 docker compose up -d
@@ -123,20 +123,16 @@ docker compose up -d
 
 如果你修改了 APP_URL 环境变量，确保只从 APP_URL 访问，因为 MetaMCP 在该 URL 上强制执行 CORS 策略，其他 URL 无法访问。
 
-注意：pg 卷名可能与其他 pg docker 冲突（全局），可在 `docker-compose.yml` 中重命名：
-
-```
-volumes:
-  metamcp_postgres_data:
-    driver: local
-```
+SQLite 数据保存在 Compose 卷 `sqlite_data` 中。若与其他项目冲突，可在 `docker-compose.yml` 中重命名该卷。
 
 ### **💻 本地开发**
 
-仍建议通过 docker 运行 postgres，便于环境搭建：
+SQLite 会自动创建（默认 `data/metamcp.db`）：
 
 ```bash
+cp example.env .env.local
 pnpm install
+cd apps/backend && pnpm db:migrate:dev && cd ../..
 pnpm dev
 ```
 

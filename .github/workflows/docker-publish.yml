@@ -11,6 +11,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
+  # GHCR requires lowercase names. github.repository is OWNER/REPO.
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
@@ -25,6 +26,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Lowercase image name
+        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -46,6 +50,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=ai-dev,enable=${{ github.ref == 'refs/heads/ai-dev' }}
             type=ref,event=branch
             type=ref,event=tag
             type=sha,prefix=sha-
@@ -70,3 +75,14 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
+
+      # Public repo + GITHUB_TOKEN publish is usually already public. This
+      # makes anonymous `docker pull` work from other repos/machines.
+      - name: Ensure GHCR package is public
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pkg="${GITHUB_REPOSITORY##*/}"
+          gh api --method PATCH "/user/packages/container/${pkg}" \
+            -f visibility=public

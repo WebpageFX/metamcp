@@ -120,16 +120,11 @@ newgrp docker
 
 ## Step 3: Deploy MetaMCP
 
-<Tip>
-  If you deploy on Kubernetes, see the plain YAML manifests and walkthrough in
-  [`deploy/kubernetes/README.md`](../../../deploy/kubernetes/README.md).
-</Tip>
-
 ### 3.1 Clone the Repository
 
 ```bash
 cd /opt
-sudo git clone https://github.com/metatool-ai/metamcp.git
+sudo git clone https://github.com/fanywebfx/metamcp.git
 sudo chown -R $USER:$USER metamcp
 cd metamcp
 ```
@@ -146,7 +141,7 @@ Edit the `.env` file with your domain and settings:
 nano .env
 ```
 
-**⚠️ IMPORTANT SECURITY NOTE**: Because this is a production environment, make sure you modify `POSTGRES_PASSWORD` and `BETTER_AUTH_SECRET` from their default values. Also ensure you use HTTPS. A typical way to generate secure secrets is:
+**⚠️ IMPORTANT SECURITY NOTE**: Because this is a production environment, make sure you modify `BETTER_AUTH_SECRET` from its default value. Also ensure you use HTTPS. A typical way to generate secure secrets is:
 
 ```bash
 openssl rand -hex 32 | base64
@@ -158,9 +153,8 @@ Key configurations to update:
 # Your domain URL (MUST use HTTPS for production)
 APP_URL=https://yourdomain.com
 
-# Database - CHANGE THE PASSWORD from default!
-DATABASE_URL=postgresql://postgres:YOUR_SECURE_PASSWORD@db:5432/metamcp
-POSTGRES_PASSWORD=YOUR_SECURE_PASSWORD
+# SQLite file inside the Compose volume (default: /data/metamcp.db)
+DATABASE_URL=file:/data/metamcp.db
 
 # Generate secure secrets - DO NOT use the example values!
 BETTER_AUTH_SECRET=your-super-secret-key-here
@@ -184,7 +178,7 @@ Update the volumes section to avoid conflicts:
 
 ```yaml
 volumes:
-  metamcp_postgres_data:
+  metamcp_sqlite_data:
     driver: local
 ```
 
