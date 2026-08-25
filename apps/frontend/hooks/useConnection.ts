@@ -290,6 +290,19 @@ export function useConnection({
   });
 
   const is401Error = useMemoizedFn((error: unknown): boolean => {
+    // Streamable HTTP auth failures often arrive as McpError(-32001) with
+    // data.code === 401 (message has no "401"), or as StreamableHTTPError
+    // with top-level code === 401. Match those so handleAuthError can start
+    // the upstream OAuth redirect.
+    const dataCode =
+      error &&
+      typeof error === "object" &&
+      "data" in error &&
+      typeof (error as { data?: unknown }).data === "object" &&
+      (error as { data?: unknown }).data !== null
+        ? (error as { data: { code?: unknown } }).data.code
+        : undefined;
+
     return Boolean(
       (error instanceof SseError && error.code === 401) ||
       (error instanceof Error && error.message.includes("401")) ||
@@ -300,7 +313,14 @@ export function useConnection({
       (error &&
         typeof error === "object" &&
         "status" in error &&
-        (error as { status: number }).status === 401),
+        (error as { status: number }).status === 401) ||
+      // StreamableHTTPError from MCP SDK (code is HTTP status)
+      (error &&
+        typeof error === "object" &&
+        "code" in error &&
+        (error as { code: unknown }).code === 401) ||
+      // Proxy-wrapped JSON-RPC: McpError -32001 with data.code 401
+      dataCode === 401,
     );
   });
 
