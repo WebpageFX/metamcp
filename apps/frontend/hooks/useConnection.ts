@@ -289,21 +289,32 @@ export function useConnection({
     }
   });
 
+  /** Pull HTTP 401 out of proxy/SDK error shapes (McpError -32001 wraps upstream 401). */
+  const getUnauthorizedHttpStatus = useMemoizedFn(
+    (error: unknown, depth = 0): number | undefined => {
+      if (depth > 4 || !error || typeof error !== "object") {
+        return undefined;
+      }
+      const obj = error as Record<string, unknown>;
+      for (const key of ["code", "httpStatus", "status"] as const) {
+        if (obj[key] === 401) {
+          return 401;
+        }
+      }
+      if (obj.data !== undefined) {
+        return getUnauthorizedHttpStatus(obj.data, depth + 1);
+      }
+      return undefined;
+    },
+  );
+
   const is401Error = useMemoizedFn((error: unknown): boolean => {
     // Streamable HTTP auth failures often arrive as McpError(-32001) with
-    // data.code === 401 (message has no "401"), or as StreamableHTTPError
-    // with top-level code === 401. Match those so handleAuthError can start
-    // the upstream OAuth redirect.
-    const dataCode =
-      error &&
-      typeof error === "object" &&
-      "data" in error &&
-      typeof (error as { data?: unknown }).data === "object" &&
-      (error as { data?: unknown }).data !== null
-        ? (error as { data: { code?: unknown } }).data.code
-        : undefined;
-
+    // data.code / data.httpStatus === 401 (message has no "401"), or as
+    // StreamableHTTPError with top-level code === 401. Match those so
+    // handleAuthError can start the upstream OAuth redirect.
     return Boolean(
+      getUnauthorizedHttpStatus(error) === 401 ||
       (error instanceof SseError && error.code === 401) ||
       (error instanceof Error && error.message.includes("401")) ||
       (error instanceof Error && error.message.includes("Unauthorized")) ||
@@ -313,14 +324,7 @@ export function useConnection({
       (error &&
         typeof error === "object" &&
         "status" in error &&
-        (error as { status: number }).status === 401) ||
-      // StreamableHTTPError from MCP SDK (code is HTTP status)
-      (error &&
-        typeof error === "object" &&
-        "code" in error &&
-        (error as { code: unknown }).code === 401) ||
-      // Proxy-wrapped JSON-RPC: McpError -32001 with data.code 401
-      dataCode === 401,
+        (error as { status: number }).status === 401),
     );
   });
 
