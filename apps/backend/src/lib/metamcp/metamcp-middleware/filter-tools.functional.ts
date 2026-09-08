@@ -9,6 +9,10 @@ import {
   namespaceToolMappingsTable,
   toolsTable,
 } from "../../../db/schema";
+import {
+  loadToolsPolicy,
+  resolveEffectiveToolStatus,
+} from "../../bootstrap-tools-policy";
 import { parseToolName } from "../tool-name-parser";
 import {
   CallToolMiddleware,
@@ -91,12 +95,15 @@ class ToolStatusCache {
 const toolStatusCache = new ToolStatusCache();
 
 /**
- * Get tool status from database with caching
+ * Get tool status from database with caching.
+ * When no namespace mapping exists, fall back to a bootstrap tools policy so
+ * `default: inactive` does not fail open for unmapped tools.
  */
 async function getToolStatus(
   namespaceUuid: string,
   toolName: string,
   serverUuid: string,
+  serverName?: string,
   useCache: boolean = true,
 ): Promise<"ACTIVE" | "INACTIVE" | null> {
   // Check cache first
@@ -126,9 +133,26 @@ async function getToolStatus(
         ),
       );
 
-    const status = toolMapping?.status || null;
+    const mappingStatus =
+      toolMapping?.status === "ACTIVE" || toolMapping?.status === "INACTIVE"
+        ? toolMapping.status
+        : null;
 
-    // Cache the result if found and caching is enabled
+    let policy = null;
+    if (mappingStatus === null && serverName) {
+      try {
+        policy = await loadToolsPolicy(serverName);
+      } catch (error) {
+        logger.error(
+          `Error loading tools policy for server "${serverName}":`,
+          error,
+        );
+      }
+    }
+
+    const status = resolveEffectiveToolStatus(toolName, mappingStatus, policy);
+
+    // Cache the result if resolved and caching is enabled
     if (status && useCache) {
       toolStatusCache.set(namespaceUuid, toolName, serverUuid, status);
     }
@@ -197,10 +221,11 @@ async function filterActiveTools(
           namespaceUuid,
           parsed.originalToolName,
           serverUuid,
+          parsed.serverName,
           useCache,
         );
 
-        // If no mapping exists or tool is active, include it
+        // null = no mapping and no bootstrap policy (legacy fail-open)
         if (status === null || status === "ACTIVE") {
           activeTools.push(tool);
         }
@@ -236,10 +261,11 @@ async function isToolAllowed(
       namespaceUuid,
       parsed.originalToolName,
       serverUuid,
+      parsed.serverName,
       useCache,
     );
 
-    // If no mapping exists or tool is active, allow it
+    // null = no mapping and no bootstrap policy (legacy fail-open)
     if (status === null || status === "ACTIVE") {
       return { allowed: true };
     }

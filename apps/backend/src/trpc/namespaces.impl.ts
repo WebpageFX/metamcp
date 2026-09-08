@@ -29,6 +29,10 @@ import {
 } from "../db/repositories";
 import { NamespacesSerializer } from "../db/serializers";
 import {
+  applyToolsPolicyMappings,
+  loadToolsPolicy,
+} from "../lib/bootstrap-tools-policy";
+import {
   clearOverrideCache,
   mapOverrideNameToOriginal,
 } from "../lib/metamcp/metamcp-middleware/tool-overrides.functional";
@@ -849,23 +853,53 @@ export const namespacesImplementations = {
 
         totalToolsCreated += upsertedTools.length;
 
-        // Create namespace tool mappings
-        const toolMappings = upsertedTools.map((tool) => ({
-          toolUuid: tool.uuid,
-          serverUuid: serverUuid,
-          status: "ACTIVE" as const,
-        }));
-
-        const createdMappings =
-          await namespaceMappingsRepository.bulkUpsertNamespaceToolMappings({
+        // Prefer persisted bootstrap tools policy; otherwise preserve existing
+        // ACTIVE/INACTIVE so a refresh does not re-enable manually disabled tools.
+        const policy = await loadToolsPolicy(serverName);
+        if (policy) {
+          await applyToolsPolicyMappings({
             namespaceUuid: input.namespaceUuid,
-            toolMappings,
+            serverUuid,
+            tools: upsertedTools.map((tool) => ({
+              uuid: tool.uuid,
+              name: tool.name,
+            })),
+            policy,
           });
+          totalMappingsCreated += upsertedTools.length;
+        } else {
+          const existingMappings =
+            await namespaceMappingsRepository.findToolMappingsByNamespace(
+              input.namespaceUuid,
+            );
+          const existingStatusByToolUuid = new Map(
+            existingMappings
+              .filter((m) => m.mcp_server_uuid === serverUuid)
+              .map((m) => [m.tool_uuid, m.status as "ACTIVE" | "INACTIVE"]),
+          );
 
-        totalMappingsCreated += createdMappings.length;
+          const toolMappings = upsertedTools.map((tool) => ({
+            toolUuid: tool.uuid,
+            serverUuid: serverUuid,
+            status:
+              existingStatusByToolUuid.get(tool.uuid) || ("ACTIVE" as const),
+          }));
+
+          const createdMappings =
+            await namespaceMappingsRepository.bulkUpsertNamespaceToolMappings({
+              namespaceUuid: input.namespaceUuid,
+              toolMappings,
+            });
+
+          totalMappingsCreated += createdMappings.length;
+        }
 
         logger.info(
-          `Processed ${tools.length} tools for server "${serverName}" (${serverUuid})`,
+          `Processed ${tools.length} tools for server "${serverName}" (${serverUuid})${
+            policy
+              ? ` with bootstrap tools policy (default=${policy.default ?? "active"})`
+              : ""
+          }`,
         );
       }
 

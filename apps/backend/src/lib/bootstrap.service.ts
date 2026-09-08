@@ -21,6 +21,12 @@ import {
   namespacesTable,
   usersTable,
 } from "../db/schema";
+import {
+  discoverAndApplyToolsPolicy,
+  McpServerToolsConfig,
+  normalizeToolsConfig,
+  saveToolsPolicy,
+} from "./bootstrap-tools-policy";
 
 /**
  * Environment-based bootstrap for MetaMCP.
@@ -96,6 +102,12 @@ type McpServerConfig = {
   namespace?: string;
   /** Optional endpoint overrides when expose=true, or false to skip endpoint creation. */
   endpoint?: boolean | McpServerEndpointConfig;
+  /**
+   * Optional default tool visibility for the exposed namespace.
+   * Applied after connecting to the upstream server and listing tools.
+   * Policy is also persisted so later "Refresh tools" re-applies it.
+   */
+  tools?: McpServerToolsConfig;
 };
 
 type EnvConfig = {
@@ -1031,6 +1043,29 @@ async function bootstrapMcpServers(
           ],
           set: { status: McpServerStatusEnum.enum.ACTIVE },
         });
+
+      const toolsPolicy = normalizeToolsConfig(resolved.tools);
+      if (toolsPolicy && namespaceUuid) {
+        try {
+          await saveToolsPolicy(name, toolsPolicy);
+          const result = await discoverAndApplyToolsPolicy({
+            serverName: name,
+            serverUuid,
+            namespaceUuid,
+            policy: toolsPolicy,
+          });
+          if (!result.applied) {
+            console.warn(
+              `⚠️ Tools policy for MCP server "${name}" saved but not fully applied yet (reason=${result.reason ?? "unknown"}); runtime filter will enforce policy for unmapped tools`,
+            );
+          }
+        } catch (err) {
+          console.warn(
+            `⚠️ Failed to apply tools policy for MCP server "${name}":`,
+            err,
+          );
+        }
+      }
 
       if (resolved.endpoint === false) {
         continue;
