@@ -47,6 +47,50 @@ export class NamespaceMappingsRepository {
     return updatedMapping;
   }
 
+  async updateToolsStatusBulk(input: {
+    namespaceUuid: string;
+    items: Array<{
+      toolUuid: string;
+      serverUuid: string;
+      status: "ACTIVE" | "INACTIVE";
+    }>;
+  }) {
+    if (input.items.length === 0) {
+      return 0;
+    }
+
+    let updatedCount = 0;
+    await db.transaction(async (tx) => {
+      for (const item of input.items) {
+        const [updatedMapping] = await tx
+          .update(namespaceToolMappingsTable)
+          .set({
+            status: item.status,
+          })
+          .where(
+            and(
+              eq(
+                namespaceToolMappingsTable.namespace_uuid,
+                input.namespaceUuid,
+              ),
+              eq(namespaceToolMappingsTable.tool_uuid, item.toolUuid),
+              eq(
+                namespaceToolMappingsTable.mcp_server_uuid,
+                item.serverUuid,
+              ),
+            ),
+          )
+          .returning();
+
+        if (updatedMapping) {
+          updatedCount += 1;
+        }
+      }
+    });
+
+    return updatedCount;
+  }
+
   async updateToolOverrides(input: NamespaceToolOverridesUpdate) {
     const [updatedMapping] = await db
       .update(namespaceToolMappingsTable)

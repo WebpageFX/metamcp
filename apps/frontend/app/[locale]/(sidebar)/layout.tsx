@@ -10,6 +10,7 @@ import {
   SearchCode,
   Server,
   Settings,
+  Sparkles,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -41,6 +42,12 @@ import { getLocalizedPath, SupportedLocale } from "@/lib/i18n";
 
 // Menu items function - now takes locale parameter
 const getMenuItems = (t: (key: string) => string, locale: SupportedLocale) => [
+  {
+    title: t("navigation:myAiTools"),
+    url: getLocalizedPath("/my-ai-tools", locale),
+    icon: Sparkles,
+    badge: t("navigation:newBadge"),
+  },
   {
     title: t("navigation:exploreMcpServers"),
     url: getLocalizedPath("/search", locale),
@@ -193,6 +200,11 @@ export default function SidebarLayout({
                       <Link href={item.url}>
                         <item.icon />
                         <span>{item.title}</span>
+                        {"badge" in item && item.badge ? (
+                          <span className="ml-auto rounded-md bg-blue-600 px-1.5 py-0.5 text-[10px] font-medium leading-none text-white">
+                            {item.badge}
+                          </span>
+                        ) : null}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

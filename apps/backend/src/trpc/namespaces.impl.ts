@@ -16,6 +16,8 @@ import {
   UpdateNamespaceToolOverridesResponseSchema,
   UpdateNamespaceToolStatusRequestSchema,
   UpdateNamespaceToolStatusResponseSchema,
+  UpdateNamespaceToolsStatusBulkRequestSchema,
+  UpdateNamespaceToolsStatusBulkResponseSchema,
 } from "@repo/zod-types";
 import { z } from "zod";
 
@@ -580,6 +582,51 @@ export const namespacesImplementations = {
       };
     } catch (error) {
       logger.error("Error updating tool status:", error);
+      return {
+        success: false as const,
+        message:
+          error instanceof Error ? error.message : "Internal server error",
+      };
+    }
+  },
+
+  updateToolsStatusBulk: async (
+    input: z.infer<typeof UpdateNamespaceToolsStatusBulkRequestSchema>,
+    userId: string,
+  ): Promise<z.infer<typeof UpdateNamespaceToolsStatusBulkResponseSchema>> => {
+    try {
+      const namespace = await namespacesRepository.findByUuid(
+        input.namespaceUuid,
+      );
+
+      if (!namespace) {
+        return {
+          success: false as const,
+          message: "Namespace not found",
+        };
+      }
+
+      if (namespace.user_id && namespace.user_id !== userId) {
+        return {
+          success: false as const,
+          message:
+            "Access denied: You can only update tool status for namespaces you own",
+        };
+      }
+
+      const updatedCount =
+        await namespaceMappingsRepository.updateToolsStatusBulk({
+          namespaceUuid: input.namespaceUuid,
+          items: input.items,
+        });
+
+      return {
+        success: true as const,
+        message: "Tool statuses updated successfully",
+        updatedCount,
+      };
+    } catch (error) {
+      logger.error("Error bulk updating tool status:", error);
       return {
         success: false as const,
         message:

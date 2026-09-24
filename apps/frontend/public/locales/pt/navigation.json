@@ -9,5 +9,7 @@
   "liveLogs": "Logs em Tempo Real",
   "application": "Aplicação",
   "logout": "Sair",
-  "profile": "Perfil"
+  "profile": "Perfil",
+  "myAiTools": "Minhas ferramentas de IA",
+  "newBadge": "Novo"
 }

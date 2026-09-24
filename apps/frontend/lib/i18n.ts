@@ -28,6 +28,7 @@ export type Translations = {
   logs: Record<string, TranslationValue>;
   "audit-logs": Record<string, TranslationValue>;
   validation: Record<string, TranslationValue>;
+  "my-ai-tools": Record<string, TranslationValue>;
 };
 
 // Utility functions for working with localized paths
@@ -79,6 +80,8 @@ export async function loadTranslations(
         .default,
       validation: (await import("../public/locales/en/validation.json"))
         .default,
+      "my-ai-tools": (await import("../public/locales/en/my-ai-tools.json"))
+        .default,
     };
   } else if (locale === "zh") {
     // Load Chinese translations with fallback to English
@@ -96,6 +99,7 @@ export async function loadTranslations(
       logsZh,
       auditLogsZh,
       validationZh,
+      myAiToolsZh,
     ] = await Promise.all([
       import("../public/locales/zh/common.json").catch(() => ({ default: {} })),
       import("../public/locales/zh/auth.json").catch(() => ({ default: {} })),
@@ -128,6 +132,9 @@ export async function loadTranslations(
       import("../public/locales/zh/validation.json").catch(() => ({
         default: {},
       })),
+      import("../public/locales/zh/my-ai-tools.json").catch(() => ({
+        default: {},
+      })),
     ]);
 
     // Get English fallback
@@ -150,6 +157,10 @@ export async function loadTranslations(
         ...auditLogsZh.default,
       },
       validation: { ...englishDict.validation, ...validationZh.default },
+      "my-ai-tools": {
+        ...englishDict["my-ai-tools"],
+        ...myAiToolsZh.default,
+      },
     };
   } else if (locale === "ko") {
     // Load Korean translations with fallback to English
@@ -167,6 +178,7 @@ export async function loadTranslations(
       logsKo,
       auditLogsKo,
       validationKo,
+      myAiToolsKo,
     ] = await Promise.all([
       import("../public/locales/ko/common.json").catch(() => ({ default: {} })),
       import("../public/locales/ko/auth.json").catch(() => ({ default: {} })),
@@ -199,6 +211,9 @@ export async function loadTranslations(
       import("../public/locales/ko/validation.json").catch(() => ({
         default: {},
       })),
+      import("../public/locales/ko/my-ai-tools.json").catch(() => ({
+        default: {},
+      })),
     ]);
 
     // Get English fallback
@@ -221,6 +236,10 @@ export async function loadTranslations(
         ...auditLogsKo.default,
       },
       validation: { ...englishDict.validation, ...validationKo.default },
+      "my-ai-tools": {
+        ...englishDict["my-ai-tools"],
+        ...myAiToolsKo.default,
+      },
     };
   } else if (locale === "pt") {
     // Load Portuguese translations with fallback to English
@@ -237,6 +256,7 @@ export async function loadTranslations(
       inspectorPt,
       logsPt,
       validationPt,
+      myAiToolsPt,
     ] = await Promise.all([
       import("../public/locales/pt/common.json").catch(() => ({ default: {} })),
       import("../public/locales/pt/auth.json").catch(() => ({ default: {} })),
@@ -266,6 +286,9 @@ export async function loadTranslations(
       import("../public/locales/pt/validation.json").catch(() => ({
         default: {},
       })),
+      import("../public/locales/pt/my-ai-tools.json").catch(() => ({
+        default: {},
+      })),
     ]);
 
     // Get English fallback
@@ -285,6 +308,10 @@ export async function loadTranslations(
       logs: { ...englishDict.logs, ...logsPt.default },
       validation: { ...englishDict.validation, ...validationPt.default },
       "audit-logs": { ...englishDict["audit-logs"] },
+      "my-ai-tools": {
+        ...englishDict["my-ai-tools"],
+        ...myAiToolsPt.default,
+      },
     };
   } else if (locale === "es") {
     // Load Spanish translations with fallback to English
@@ -301,6 +328,7 @@ export async function loadTranslations(
       inspectorEs,
       logsEs,
       validationEs,
+      myAiToolsEs,
     ] = await Promise.all([
       import("../public/locales/es/common.json").catch(() => ({ default: {} })),
       import("../public/locales/es/auth.json").catch(() => ({ default: {} })),
@@ -330,6 +358,9 @@ export async function loadTranslations(
       import("../public/locales/es/validation.json").catch(() => ({
         default: {},
       })),
+      import("../public/locales/es/my-ai-tools.json").catch(() => ({
+        default: {},
+      })),
     ]);
 
     // Get English fallback
@@ -349,6 +380,10 @@ export async function loadTranslations(
       logs: { ...englishDict.logs, ...logsEs.default },
       validation: { ...englishDict.validation, ...validationEs.default },
       "audit-logs": { ...englishDict["audit-logs"] },
+      "my-ai-tools": {
+        ...englishDict["my-ai-tools"],
+        ...myAiToolsEs.default,
+      },
     };
   } else {
     // Fallback to English for unsupported locales
