@@ -1,5 +1,5 @@
 const WRITE_NAME_RE =
-  /\b(create|update|delete|edit|write|archive|move|assign)\b/i;
+  /\b(create|update|delete|edit|write|archive|move|assign|add|remove|set|post|send|publish|upload|rename|comment|merge|close)\b/i;
 
 export type ToolRiskAnnotations = Record<string, unknown> | null | undefined;
 

@@ -3,7 +3,7 @@ import {
   NamespaceToolOverridesUpdate,
   NamespaceToolStatusUpdate,
 } from "@repo/zod-types";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "../index";
 import {
@@ -47,50 +47,6 @@ export class NamespaceMappingsRepository {
     return updatedMapping;
   }
 
-  async updateToolsStatusBulk(input: {
-    namespaceUuid: string;
-    items: Array<{
-      toolUuid: string;
-      serverUuid: string;
-      status: "ACTIVE" | "INACTIVE";
-    }>;
-  }) {
-    if (input.items.length === 0) {
-      return 0;
-    }
-
-    let updatedCount = 0;
-    await db.transaction(async (tx) => {
-      for (const item of input.items) {
-        const [updatedMapping] = await tx
-          .update(namespaceToolMappingsTable)
-          .set({
-            status: item.status,
-          })
-          .where(
-            and(
-              eq(
-                namespaceToolMappingsTable.namespace_uuid,
-                input.namespaceUuid,
-              ),
-              eq(namespaceToolMappingsTable.tool_uuid, item.toolUuid),
-              eq(
-                namespaceToolMappingsTable.mcp_server_uuid,
-                item.serverUuid,
-              ),
-            ),
-          )
-          .returning();
-
-        if (updatedMapping) {
-          updatedCount += 1;
-        }
-      }
-    });
-
-    return updatedCount;
-  }
-
   async updateToolOverrides(input: NamespaceToolOverridesUpdate) {
     const [updatedMapping] = await db
       .update(namespaceToolMappingsTable)
@@ -110,6 +66,116 @@ export class NamespaceMappingsRepository {
       .returning();
 
     return updatedMapping;
+  }
+
+  /**
+   * Server mappings across a set of namespaces, used by the global tool
+   * catalog to aggregate one status per MCP server.
+   */
+  async findServerMappingsByNamespaces(namespaceUuids: string[]) {
+    if (namespaceUuids.length === 0) {
+      return [];
+    }
+
+    return await db
+      .select({
+        namespace_uuid: namespaceServerMappingsTable.namespace_uuid,
+        mcp_server_uuid: namespaceServerMappingsTable.mcp_server_uuid,
+        status: namespaceServerMappingsTable.status,
+      })
+      .from(namespaceServerMappingsTable)
+      .where(
+        inArray(namespaceServerMappingsTable.namespace_uuid, namespaceUuids),
+      );
+  }
+
+  /**
+   * Tool mappings across a set of namespaces, used by the global tool catalog.
+   */
+  async findToolMappingsByNamespaces(namespaceUuids: string[]) {
+    if (namespaceUuids.length === 0) {
+      return [];
+    }
+
+    return await db
+      .select({
+        namespace_uuid: namespaceToolMappingsTable.namespace_uuid,
+        tool_uuid: namespaceToolMappingsTable.tool_uuid,
+        mcp_server_uuid: namespaceToolMappingsTable.mcp_server_uuid,
+        status: namespaceToolMappingsTable.status,
+      })
+      .from(namespaceToolMappingsTable)
+      .where(
+        inArray(namespaceToolMappingsTable.namespace_uuid, namespaceUuids),
+      );
+  }
+
+  /**
+   * Set one MCP server's status in every given namespace that already maps it.
+   */
+  async setServerStatusAcrossNamespaces(input: {
+    serverUuid: string;
+    namespaceUuids: string[];
+    status: "ACTIVE" | "INACTIVE";
+  }) {
+    if (input.namespaceUuids.length === 0) {
+      return [];
+    }
+
+    return await db
+      .update(namespaceServerMappingsTable)
+      .set({ status: input.status })
+      .where(
+        and(
+          eq(namespaceServerMappingsTable.mcp_server_uuid, input.serverUuid),
+          inArray(
+            namespaceServerMappingsTable.namespace_uuid,
+            input.namespaceUuids,
+          ),
+        ),
+      )
+      .returning();
+  }
+
+  /**
+   * Set tool statuses across namespaces. Mappings are upserted so tools that
+   * were never mapped (for example, discovered but never refreshed into a
+   * namespace) still get an explicit status instead of falling through to the
+   * bootstrap policy.
+   */
+  async setToolsStatusAcrossNamespaces(input: {
+    entries: Array<{
+      namespaceUuid: string;
+      toolUuid: string;
+      serverUuid: string;
+      status: "ACTIVE" | "INACTIVE";
+    }>;
+  }) {
+    if (input.entries.length === 0) {
+      return [];
+    }
+
+    return await db
+      .insert(namespaceToolMappingsTable)
+      .values(
+        input.entries.map((entry) => ({
+          namespace_uuid: entry.namespaceUuid,
+          tool_uuid: entry.toolUuid,
+          mcp_server_uuid: entry.serverUuid,
+          status: entry.status,
+        })),
+      )
+      .onConflictDoUpdate({
+        target: [
+          namespaceToolMappingsTable.namespace_uuid,
+          namespaceToolMappingsTable.tool_uuid,
+        ],
+        set: {
+          status: sql`excluded.status`,
+          mcp_server_uuid: sql`excluded.mcp_server_uuid`,
+        },
+      })
+      .returning();
   }
 
   async findServerMapping(namespaceUuid: string, serverUuid: string) {

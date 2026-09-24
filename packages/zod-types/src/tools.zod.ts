@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { McpServerTypeEnum } from "./mcp-servers.zod";
+
 // Define tool-specific status enum
 export const ToolStatusEnum = z.enum(["ACTIVE", "INACTIVE"]);
 export type ToolStatus = z.infer<typeof ToolStatusEnum>;
@@ -115,3 +117,79 @@ export const DatabaseToolSchema = z.object({
 });
 
 export type DatabaseTool = z.infer<typeof DatabaseToolSchema>;
+
+// ---------------------------------------------------------------------------
+// Global tool catalog ("My AI Tools")
+//
+// Status is stored per namespace. The catalog aggregates every namespace the
+// user can write to, so a server/tool that differs between namespaces reports
+// MIXED, and one that belongs to no namespace reports UNAVAILABLE.
+// ---------------------------------------------------------------------------
+
+export const ToolCatalogStatusEnum = z.enum([
+  "ACTIVE",
+  "INACTIVE",
+  "MIXED",
+  "UNAVAILABLE",
+]);
+export type ToolCatalogStatus = z.infer<typeof ToolCatalogStatusEnum>;
+
+export const ToolCatalogToolSchema = z.object({
+  uuid: z.string(),
+  name: z.string(),
+  description: z.string().nullable(),
+  status: ToolCatalogStatusEnum,
+});
+
+export const ToolCatalogServerSchema = z.object({
+  uuid: z.string(),
+  name: z.string(),
+  description: z.string().nullable(),
+  type: McpServerTypeEnum,
+  status: ToolCatalogStatusEnum,
+  namespaceCount: z.number(),
+  tools: z.array(ToolCatalogToolSchema),
+});
+
+export const GetToolCatalogResponseSchema = z.object({
+  success: z.boolean(),
+  data: z.array(ToolCatalogServerSchema),
+  message: z.string().optional(),
+});
+
+export const SetCatalogServerStatusRequestSchema = z.object({
+  serverUuid: z.string().uuid(),
+  status: ToolStatusEnum,
+});
+
+export const SetCatalogToolsStatusRequestSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        toolUuid: z.string().uuid(),
+        status: ToolStatusEnum,
+      }),
+    )
+    .min(1),
+});
+
+export const SetCatalogStatusResponseSchema = z.object({
+  success: z.boolean(),
+  message: z.string(),
+  updatedCount: z.number().optional(),
+});
+
+export type ToolCatalogTool = z.infer<typeof ToolCatalogToolSchema>;
+export type ToolCatalogServer = z.infer<typeof ToolCatalogServerSchema>;
+export type GetToolCatalogResponse = z.infer<
+  typeof GetToolCatalogResponseSchema
+>;
+export type SetCatalogServerStatusRequest = z.infer<
+  typeof SetCatalogServerStatusRequestSchema
+>;
+export type SetCatalogToolsStatusRequest = z.infer<
+  typeof SetCatalogToolsStatusRequestSchema
+>;
+export type SetCatalogStatusResponse = z.infer<
+  typeof SetCatalogStatusResponseSchema
+>;
