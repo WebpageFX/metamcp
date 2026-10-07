@@ -16,7 +16,6 @@ import {
   accessBadge,
   ConnectionReadiness,
   countToolsOn,
-  groupCatalogTools,
   serverIsOn,
 } from "./catalog-types";
 import { ToolGroup } from "./tool-group";
@@ -76,7 +75,6 @@ export function ConnectionCard({
   const { t } = useTranslations();
   const [expanded, setExpanded] = useState(false);
   const [toolQuery, setToolQuery] = useState("");
-  const [moreExpanded, setMoreExpanded] = useState(false);
 
   const unavailable = server.status === "UNAVAILABLE";
   const on = serverIsOn(server);
@@ -100,10 +98,6 @@ export function ConnectionCard({
   }, [server.tools, toolQuery]);
 
   const searching = toolQuery.trim().length > 0;
-  const groups = useMemo(
-    () => groupCatalogTools(filteredTools, !searching),
-    [filteredTools, searching],
-  );
 
   const statusLabel =
     readiness === "turnedOff"
@@ -193,9 +187,7 @@ export function ConnectionCard({
               toolQuery={toolQuery}
               onToolQuery={setToolQuery}
               searching={searching}
-              groups={groups}
-              moreExpanded={moreExpanded}
-              onExpandMore={() => setMoreExpanded(true)}
+              tools={filteredTools}
               unavailable={unavailable}
               onToggleTool={onToggleTool}
               onBulkTools={onBulkTools}
@@ -255,9 +247,7 @@ function OnBody({
   toolQuery,
   onToolQuery,
   searching,
-  groups,
-  moreExpanded,
-  onExpandMore,
+  tools,
   unavailable,
   onToggleTool,
   onBulkTools,
@@ -269,9 +259,7 @@ function OnBody({
   toolQuery: string;
   onToolQuery: (value: string) => void;
   searching: boolean;
-  groups: ReturnType<typeof groupCatalogTools>;
-  moreExpanded: boolean;
-  onExpandMore: () => void;
+  tools: ToolCatalogTool[];
   unavailable: boolean;
   onToggleTool: (tool: ToolCatalogTool, nextActive: boolean) => void;
   onBulkTools: (
@@ -280,11 +268,7 @@ function OnBody({
   ) => void;
 }) {
   const { t } = useTranslations();
-  const noMatches =
-    searching &&
-    groups.find.length === 0 &&
-    groups.write.length === 0 &&
-    groups.more.length === 0;
+  const noMatches = searching && tools.length === 0;
 
   return (
     <>
@@ -322,40 +306,12 @@ function OnBody({
               {t("my-ai-tools:noToolMatches")}
             </p>
           ) : (
-            <div className="flex flex-col gap-3">
-              <ToolGroup
-                title={t("my-ai-tools:findThings")}
-                tools={groups.find}
-                onToggleTool={onToggleTool}
-                onBulk={onBulkTools}
-                disabled={unavailable}
-              />
-              <ToolGroup
-                title={t("my-ai-tools:createEdit")}
-                tools={groups.write}
-                onToggleTool={onToggleTool}
-                onBulk={onBulkTools}
-                disabled={unavailable}
-              />
-              {groups.more.length > 0 && !moreExpanded ? (
-                <button
-                  type="button"
-                  className="py-1.5 text-left text-sm text-primary hover:underline"
-                  onClick={onExpandMore}
-                >
-                  {t("my-ai-tools:showMore", { count: groups.more.length })} →
-                </button>
-              ) : null}
-              {groups.more.length > 0 && moreExpanded ? (
-                <ToolGroup
-                  title={t("my-ai-tools:moreTools")}
-                  tools={groups.more}
-                  onToggleTool={onToggleTool}
-                  onBulk={onBulkTools}
-                  disabled={unavailable}
-                />
-              ) : null}
-            </div>
+            <ToolGroup
+              tools={tools}
+              onToggleTool={onToggleTool}
+              onBulk={onBulkTools}
+              disabled={unavailable}
+            />
           )}
         </>
       )}

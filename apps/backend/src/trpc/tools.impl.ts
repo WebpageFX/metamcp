@@ -22,6 +22,7 @@ import {
 } from "../db/repositories";
 import { ToolsSerializer } from "../db/serializers";
 import {
+  ensureDiscoveredTools,
   loadToolsPolicy,
   McpServerToolsConfig,
   resolveEffectiveToolStatus,
@@ -54,6 +55,32 @@ function aggregateStatus(statuses: ToolStatus[]): ToolCatalogStatus {
 async function getWritableNamespaceUuids(userId: string): Promise<string[]> {
   const namespaces = await namespacesRepository.findAllAccessibleToUser(userId);
   return namespaces.map((namespace) => namespace.uuid);
+}
+
+async function mapWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
+  if (items.length === 0) {
+    return;
+  }
+
+  const queue = [...items];
+  const workers = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      while (queue.length > 0) {
+        const item = queue.shift();
+        if (item === undefined) {
+          return;
+        }
+        await fn(item);
+      }
+    },
+  );
+
+  await Promise.all(workers);
 }
 
 function invalidateNamespaces(namespaceUuids: string[], reason: string): void {
@@ -148,6 +175,37 @@ export const toolsImplementations = {
         const list = toolsByServer.get(tool.mcp_server_uuid) ?? [];
         list.push(tool);
         toolsByServer.set(tool.mcp_server_uuid, list);
+      }
+
+      // Default "all tools on" does not write tool rows. List those servers
+      // once so the catalog can show the same tools clients already receive.
+      const missingToolServers = servers.filter((server) => {
+        const namespaces = serverNamespaces.get(server.uuid);
+        const stored = toolsByServer.get(server.uuid)?.length ?? 0;
+        return stored === 0 && namespaces !== undefined && namespaces.size > 0;
+      });
+
+      await mapWithConcurrency(missingToolServers, 4, async (server) => {
+        const namespaces = serverNamespaces.get(server.uuid);
+        if (!namespaces) {
+          return;
+        }
+        await ensureDiscoveredTools({
+          serverName: server.name,
+          serverUuid: server.uuid,
+          namespaceUuids: [...namespaces.keys()],
+        });
+      });
+
+      if (missingToolServers.length > 0) {
+        const discovered = await toolsRepository.findByMcpServerUuids(
+          missingToolServers.map((server) => server.uuid),
+        );
+        for (const tool of discovered) {
+          const list = toolsByServer.get(tool.mcp_server_uuid) ?? [];
+          list.push(tool);
+          toolsByServer.set(tool.mcp_server_uuid, list);
+        }
       }
 
       // Unmapped tools fall back to the bootstrap policy, same as the runtime

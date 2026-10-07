@@ -9,7 +9,7 @@ import { useTranslations } from "@/hooks/useTranslations";
 import { displayToolLabel } from "./tool-risk";
 
 interface ToolGroupProps {
-  title: string;
+  title?: string;
   tools: ToolCatalogTool[];
   onToggleTool: (tool: ToolCatalogTool, nextActive: boolean) => void;
   onBulk: (tools: ToolCatalogTool[], status: "ACTIVE" | "INACTIVE") => void;
@@ -31,10 +31,12 @@ export function ToolGroup({
 
   return (
     <div>
-      <div className="mt-0.5 flex items-center justify-between gap-2">
-        <h4 className="text-[0.7rem] font-bold tracking-wide text-muted-foreground uppercase">
-          {title}
-        </h4>
+      <div className="mt-0.5 flex items-center justify-end gap-2">
+        {title ? (
+          <h4 className="mr-auto text-[0.7rem] font-bold tracking-wide text-muted-foreground uppercase">
+            {title}
+          </h4>
+        ) : null}
         <div className="flex gap-2.5">
           <button
             type="button"
@@ -63,7 +65,7 @@ export function ToolGroup({
           >
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium leading-tight">
+                <span className="text-sm leading-tight font-bold text-foreground dark:text-white">
                   {displayToolLabel(tool)}
                 </span>
                 {tool.status === "MIXED" ? (
@@ -71,7 +73,10 @@ export function ToolGroup({
                 ) : null}
               </div>
               {tool.description ? (
-                <p className="mt-0.5 text-xs text-muted-foreground">
+                <p
+                  className="mt-0.5 line-clamp-2 text-xs leading-snug text-muted-foreground"
+                  title={tool.description}
+                >
                   {tool.description}
                 </p>
               ) : null}

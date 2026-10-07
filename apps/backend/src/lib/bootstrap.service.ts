@@ -1044,24 +1044,29 @@ async function bootstrapMcpServers(
           set: { status: McpServerStatusEnum.enum.ACTIVE },
         });
 
-      const toolsPolicy = normalizeToolsConfig(resolved.tools);
-      if (toolsPolicy && namespaceUuid) {
+      if (namespaceUuid) {
         try {
-          await saveToolsPolicy(name, toolsPolicy);
+          // A tools block is optional. With no block, every discovered tool
+          // stays on. Either way we have to list tools once so the catalog
+          // has rows to show; the runtime default does not fill that table.
+          const toolsPolicy = normalizeToolsConfig(resolved.tools);
+          if (toolsPolicy) {
+            await saveToolsPolicy(name, toolsPolicy);
+          }
           const result = await discoverAndApplyToolsPolicy({
             serverName: name,
             serverUuid,
             namespaceUuid,
-            policy: toolsPolicy,
+            policy: toolsPolicy ?? { default: "active" },
           });
           if (!result.applied) {
             console.warn(
-              `⚠️ Tools policy for MCP server "${name}" saved but not fully applied yet (reason=${result.reason ?? "unknown"}); runtime filter will enforce policy for unmapped tools`,
+              `⚠️ Tools for MCP server "${name}" were not fully discovered (reason=${result.reason ?? "unknown"})${toolsPolicy ? "; runtime filter will enforce policy for unmapped tools" : ""}`,
             );
           }
         } catch (err) {
           console.warn(
-            `⚠️ Failed to apply tools policy for MCP server "${name}":`,
+            `⚠️ Failed to discover tools for MCP server "${name}":`,
             err,
           );
         }
