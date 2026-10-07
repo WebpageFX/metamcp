@@ -198,6 +198,10 @@ export const toolsImplementations = {
           name: server.name,
           description: server.description,
           type: server.type,
+          url: server.url,
+          command: server.command,
+          createdAt: server.created_at.toISOString(),
+          errorStatus: server.error_status,
           status: aggregateStatus(
             namespacesForServer ? [...namespacesForServer.values()] : [],
           ),

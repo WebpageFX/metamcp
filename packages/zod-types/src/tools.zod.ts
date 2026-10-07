@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { McpServerTypeEnum } from "./mcp-servers.zod";
+import { McpServerErrorStatusEnum, McpServerTypeEnum } from "./mcp-servers.zod";
 
 // Define tool-specific status enum
 export const ToolStatusEnum = z.enum(["ACTIVE", "INACTIVE"]);
@@ -146,6 +146,10 @@ export const ToolCatalogServerSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
   type: McpServerTypeEnum,
+  url: z.string().nullable(),
+  command: z.string().nullable(),
+  createdAt: z.string(),
+  errorStatus: McpServerErrorStatusEnum,
   status: ToolCatalogStatusEnum,
   namespaceCount: z.number(),
   tools: z.array(ToolCatalogToolSchema),

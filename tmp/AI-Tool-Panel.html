@@ -1,0 +1,903 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>AI Tool Panel</title>
+<style>
+  :root{
+    --bg:#F8FAFC;
+    --sidebar-bg:#FFFFFF;
+    --surface:#FFFFFF;
+    --surface-muted:#F1F5F9;
+    --border:#E2E8F0;
+    --text:#0F172A;
+    --text-muted:#64748B;
+    --text-faint:#94A3B8;
+    --accent:#2563EB;
+    --accent-weak:#EFF6FF;
+    --good:#15803D;
+    --good-bg:#F0FDF4;
+    --warn:#B45309;
+    --warn-bg:#FFFBEB;
+    --off:#475569;
+    --off-bg:#F1F5F9;
+    --shadow:0 1px 2px rgba(15,23,42,0.04), 0 10px 28px rgba(15,23,42,0.06);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0B0F19;
+      --sidebar-bg:#0F1420;
+      --surface:#111827;
+      --surface-muted:#1A2130;
+      --border:#232B3A;
+      --text:#E5E9F0;
+      --text-muted:#98A2B5;
+      --text-faint:#69728A;
+      --accent:#5B9CFA;
+      --accent-weak:#152438;
+      --good:#4ADE80;
+      --good-bg:#102A1B;
+      --warn:#FBBF24;
+      --warn-bg:#382A0D;
+      --off:#9AA4B8;
+      --off-bg:#1B2230;
+      --shadow:0 1px 2px rgba(0,0,0,0.4), 0 10px 28px rgba(0,0,0,0.4);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0B0F19;
+    --sidebar-bg:#0F1420;
+    --surface:#111827;
+    --surface-muted:#1A2130;
+    --border:#232B3A;
+    --text:#E5E9F0;
+    --text-muted:#98A2B5;
+    --text-faint:#69728A;
+    --accent:#5B9CFA;
+    --accent-weak:#152438;
+    --good:#4ADE80;
+    --good-bg:#102A1B;
+    --warn:#FBBF24;
+    --warn-bg:#382A0D;
+    --off:#9AA4B8;
+    --off-bg:#1B2230;
+    --shadow:0 1px 2px rgba(0,0,0,0.4), 0 10px 28px rgba(0,0,0,0.4);
+  }
+
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;background:var(--bg);color:var(--text);
+    font-family:"Inter",-apple-system,Segoe UI,sans-serif;
+    padding-inline:0;
+  }
+  .mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;}
+  svg.icon{width:16px;height:16px;flex:0 0 auto;}
+
+  .shell{display:flex;min-height:100%;}
+
+  /* ---------- sidebar ---------- */
+  .sidebar{
+    width:224px;flex:0 0 224px;background:var(--sidebar-bg);border-right:1px solid var(--border);
+    display:flex;flex-direction:column;justify-content:space-between;
+    position:sticky;top:0;align-self:flex-start;height:100vh;padding:16px 12px;
+  }
+  .brand{display:flex;align-items:center;gap:9px;padding:4px 6px 16px;}
+  .brandmark{width:26px;height:26px;border-radius:7px;flex:0 0 auto;
+    background:linear-gradient(135deg,#6366F1,#2563EB 55%,#0EA5E9);}
+  .brandname{font-weight:700;font-size:0.95rem;letter-spacing:-0.01em;}
+
+  .navlabel{font-size:0.68rem;font-weight:600;color:var(--text-faint);text-transform:uppercase;
+    letter-spacing:.06em;padding:6px 10px 4px;}
+  nav.navlist{display:flex;flex-direction:column;gap:1px;}
+  .navitem{
+    display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:7px;
+    color:var(--text-muted);font-size:0.85rem;cursor:pointer;background:none;border:none;
+    width:100%;text-align:left;font-family:inherit;
+  }
+  .navitem:hover{background:var(--surface-muted);color:var(--text);}
+  .navitem.active{background:var(--accent-weak);color:var(--accent);font-weight:600;}
+  .navitem .lbl{flex:1 1 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .navitem .newpill{
+    font-size:0.62rem;font-weight:700;background:var(--accent);color:#fff;padding:1px 6px;
+    border-radius:5px;flex:0 0 auto;
+  }
+  .navitem .countpill{
+    font-size:0.68rem;font-weight:600;color:var(--text-faint);background:var(--surface-muted);
+    padding:1px 6px;border-radius:5px;flex:0 0 auto;
+  }
+  .navdivider{height:1px;background:var(--border);margin:8px 4px;}
+
+  .sidebarfoot{display:flex;flex-direction:column;gap:8px;}
+  .footrow{display:flex;align-items:center;justify-content:space-between;padding:4px 8px;font-size:0.8rem;color:var(--text-muted);}
+  .iconbtn{width:26px;height:26px;border-radius:7px;border:1px solid var(--border);background:var(--surface);
+    color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.8rem;}
+  .verstag{font-size:0.7rem;color:var(--text-faint);padding:0 8px;font-family:"IBM Plex Mono",monospace;}
+  .userblock{padding:8px;border-top:1px solid var(--border);}
+  .username{font-size:0.82rem;font-weight:600;}
+  .usermail{font-size:0.72rem;color:var(--text-faint);}
+  .signout{
+    margin-top:6px;width:100%;padding:7px;border-radius:7px;border:1px solid var(--border);
+    background:var(--surface);color:var(--text-muted);font-size:0.8rem;cursor:pointer;font-family:inherit;
+  }
+
+  /* ---------- mobile bar / drawer ---------- */
+  .mobilebar{display:none;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);
+    background:var(--surface);position:sticky;top:0;z-index:30;}
+  .menubtn{width:32px;height:32px;border-radius:7px;border:1px solid var(--border);background:var(--surface);
+    color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+  .mobiletitle{font-weight:700;font-size:0.9rem;}
+  .overlay{position:fixed;inset:0;background:rgba(15,23,42,0.45);z-index:40;opacity:0;pointer-events:none;transition:opacity .15s ease;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+
+  @media (max-width:760px){
+    .mobilebar{display:flex;}
+    .sidebar{position:fixed;left:0;top:0;height:100%;transform:translateX(-104%);transition:transform .18s ease;
+      z-index:50;box-shadow:var(--shadow);width:240px;flex:0 0 240px;}
+    .sidebar.open{transform:translateX(0);}
+    .main{padding:18px 16px 60px;}
+  }
+
+  /* ---------- main ---------- */
+  .main{flex:1 1 auto;min-width:0;padding:26px 32px 60px;}
+  .wrap{max-width:820px;margin:0 auto;}
+
+  .pagehead{display:flex;align-items:flex-start;gap:12px;margin-bottom:16px;}
+  .pageicon{width:34px;height:34px;border-radius:8px;background:var(--accent-weak);color:var(--accent);
+    display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+  .pageicon svg{width:18px;height:18px;}
+  .pagehead h1{font-size:1.35rem;margin:0 0 4px;letter-spacing:-0.01em;}
+  .pagehead p{margin:0;color:var(--text-muted);font-size:0.87rem;max-width:56ch;}
+
+  .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:16px 0 12px;}
+  .search{flex:1 1 220px;position:relative;}
+  .search input{
+    width:100%;padding:8px 12px 8px 32px;border-radius:8px;border:1px solid var(--border);
+    background:var(--surface);color:var(--text);font-size:0.86rem;font-family:inherit;
+  }
+  .search input:focus{outline:2px solid var(--accent);outline-offset:1px;}
+  .search svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-faint);width:15px;height:15px;}
+
+  .chips{display:flex;gap:6px;flex-wrap:wrap;}
+  .chip{
+    border:1px solid var(--border);background:var(--surface);color:var(--text-muted);
+    padding:6px 11px;border-radius:7px;font-size:0.8rem;cursor:pointer;white-space:nowrap;font-family:inherit;
+  }
+  .chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff;}
+
+  .legendwrap{position:relative;}
+  .legendbtn{
+    border:1px solid var(--border);background:var(--surface);color:var(--text-muted);
+    width:30px;height:30px;border-radius:7px;cursor:pointer;font-size:0.85rem;flex:0 0 auto;font-family:inherit;
+  }
+  .legendpop{
+    position:absolute;right:0;top:38px;width:250px;background:var(--surface);border:1px solid var(--border);
+    border-radius:9px;box-shadow:var(--shadow);padding:12px 14px;font-size:0.8rem;color:var(--text-muted);z-index:20;
+  }
+  .legendpop b{color:var(--text);}
+  .legendpop .row{display:flex;gap:8px;align-items:flex-start;margin:7px 0;}
+  .dot{width:8px;height:8px;border-radius:999px;flex:0 0 auto;margin-top:4px;}
+  .dot.on{background:var(--good);} .dot.attn{background:var(--warn);} .dot.off{background:var(--off);}
+
+  .summary{
+    display:flex;gap:16px;flex-wrap:wrap;font-size:0.82rem;color:var(--text-muted);
+    background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:9px 13px;margin-bottom:14px;
+  }
+  .summary strong{color:var(--text);font-weight:700;}
+
+  .list{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface);}
+  .card{border-bottom:1px solid var(--border);}
+  .card:last-child{border-bottom:none;}
+  .card[data-open="true"]{background:var(--surface);}
+
+  .head{display:flex;align-items:center;gap:10px;padding:11px 14px;}
+  .clickarea{display:flex;align-items:center;gap:10px;flex:1 1 auto;cursor:pointer;min-width:0;background:none;border:none;text-align:left;font-family:inherit;padding:0;}
+  .avatar{
+    width:30px;height:30px;border-radius:7px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+    font-weight:700;font-size:0.72rem;background:var(--accent-weak);color:var(--accent);
+  }
+  .titleblock{min-width:0;flex:1 1 auto;}
+  .titlerow{display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
+  .titlerow .name{font-weight:600;font-size:0.9rem;}
+  .slug{font-size:0.7rem;color:var(--text-faint);}
+  .badge{
+    font-size:0.66rem;font-weight:600;padding:2px 7px;border-radius:6px;border:1px solid var(--border);
+    color:var(--text-muted);white-space:nowrap;background:var(--off-bg);
+  }
+  .badge.write{color:var(--warn);border-color:transparent;background:var(--warn-bg);}
+  .sub{font-size:0.76rem;color:var(--text-muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+  .metaright{display:flex;align-items:center;gap:8px;flex:0 0 auto;}
+  .pill{
+    font-size:0.7rem;font-weight:600;padding:3px 8px;border-radius:6px;display:flex;align-items:center;gap:5px;white-space:nowrap;
+  }
+  .pill .dot{margin:0;}
+  .pill.on{background:var(--good-bg);color:var(--good);}
+  .pill.attn{background:var(--warn-bg);color:var(--warn);}
+  .pill.off{background:var(--off-bg);color:var(--off);}
+
+  .count{font-size:0.7rem;color:var(--text-muted);white-space:nowrap;}
+  .chev{color:var(--text-faint);transition:transform .15s ease;flex:0 0 auto;}
+  .card[data-open="true"] .chev{transform:rotate(180deg);}
+
+  .switch{
+    position:relative;width:32px;height:19px;border-radius:999px;background:var(--off-bg);
+    border:1px solid var(--border);cursor:pointer;flex:0 0 auto;padding:0;
+  }
+  .switch::after{
+    content:"";position:absolute;top:1px;left:1px;width:15px;height:15px;border-radius:999px;
+    background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,0.25);transition:transform .15s ease;
+  }
+  .switch[aria-checked="true"]{background:var(--accent);border-color:var(--accent);}
+  .switch[aria-checked="true"]::after{transform:translateX(13px);background:#fff;}
+  .switch.small{width:28px;height:17px;}
+  .switch.small::after{width:13px;height:13px;}
+  .switch.small[aria-checked="true"]::after{transform:translateX(11px);}
+
+  .body{border-top:1px solid var(--border);padding:14px;display:flex;flex-direction:column;gap:12px;background:var(--surface-muted);}
+  .desc{font-size:0.84rem;color:var(--text-muted);}
+
+  .risknote,.healthnote{
+    display:flex;gap:8px;align-items:flex-start;background:var(--warn-bg);color:var(--warn);
+    border-radius:8px;padding:9px 11px;font-size:0.8rem;line-height:1.4;
+  }
+
+  .offstate{
+    display:flex;flex-direction:column;gap:10px;align-items:flex-start;
+    background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;
+  }
+  .offstate p{margin:0;font-size:0.84rem;color:var(--text-muted);}
+  .btn{
+    border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:0.8rem;
+    padding:7px 12px;border-radius:7px;cursor:pointer;font-weight:500;font-family:inherit;
+  }
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+
+  .toolsearch{position:relative;}
+  .toolsearch input{
+    width:100%;padding:7px 10px 7px 30px;border-radius:7px;border:1px solid var(--border);
+    background:var(--surface);color:var(--text);font-size:0.8rem;font-family:inherit;
+  }
+  .toolsearch svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--text-faint);width:14px;height:14px;}
+
+  .grouphead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:2px;}
+  .grouplabel{font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-faint);}
+  .bulklinks{display:flex;gap:10px;}
+  .bulklinks button{background:none;border:none;color:var(--accent);font-size:0.75rem;cursor:pointer;padding:0;font-family:inherit;}
+
+  .toolrow{
+    display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);
+  }
+  .toolrow:last-child{border-bottom:none;}
+  .toolinfo{flex:1 1 auto;min-width:0;}
+  .toolname{font-size:0.84rem;font-weight:500;}
+  .tooldesc{font-size:0.76rem;color:var(--text-muted);margin-top:1px;}
+
+  .showmore{
+    background:none;border:none;color:var(--accent);font-size:0.8rem;cursor:pointer;padding:6px 0;text-align:left;font-family:inherit;
+  }
+
+  details.adv{font-size:0.78rem;}
+  details.adv summary{cursor:pointer;color:var(--text-faint);list-style:none;}
+  details.adv summary::-webkit-details-marker{display:none;}
+  details.adv summary::before{content:"▸ ";}
+  details.adv[open] summary::before{content:"▾ ";}
+  .advbox{margin-top:8px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:0.76rem;}
+  .advbox dt{color:var(--text-faint);}
+  .advbox dd{margin:0;color:var(--text-muted);word-break:break-all;}
+
+  .empty{padding:30px 0;text-align:center;color:var(--text-faint);font-size:0.86rem;}
+
+  .placeholder{
+    border:1px dashed var(--border);border-radius:10px;padding:32px 20px;text-align:center;
+    color:var(--text-muted);font-size:0.86rem;background:var(--surface);
+  }
+  .placeholder strong{color:var(--text);}
+
+  @media (max-width:520px){
+    .titlerow{gap:5px;}
+    .metaright{gap:6px;}
+    .sub{display:none;}
+  }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<div class="overlay" id="overlay"></div>
+<div class="shell">
+  <aside class="sidebar" id="sidebar">
+    <div>
+      <div class="brand"><span class="brandmark"></span><span class="brandname">MetaMCP</span></div>
+      <div class="navlabel">Application</div>
+      <nav class="navlist" id="navlist"></nav>
+    </div>
+    <div class="sidebarfoot">
+      <div class="footrow"><span>English</span><button class="iconbtn" title="Toggle theme">&#9788;</button></div>
+      <div class="verstag">v2.5-ai-dev</div>
+      <div class="userblock">
+        <div class="username">Local Admin</div>
+        <div class="usermail">local@metamcp.local</div>
+        <button class="signout">Sign Out</button>
+      </div>
+    </div>
+  </aside>
+
+  <div style="flex:1 1 auto;min-width:0;display:flex;flex-direction:column;">
+    <div class="mobilebar">
+      <button class="menubtn" id="menuBtn" aria-label="Open menu">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <span class="mobiletitle" id="mobileTitle">My AI Tools</span>
+    </div>
+
+    <main class="main">
+      <div class="wrap" id="mainWrap"></div>
+    </main>
+  </div>
+</div>
+
+<script>
+(function(){
+  function humanize(slug){
+    var s = slug.replace(/_/g,' ');
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+  function mkExtra(slugs){
+    return slugs.map(function(s){ return {id:s, name:humanize(s), on:false}; });
+  }
+  function initials(name){
+    var words = name.replace(/\(.*?\)/g,'').trim().split(/\s+/);
+    return (words[0][0] + (words[1] ? words[1][0] : '')).toUpperCase();
+  }
+
+  var ICONS = {
+    sliders: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h13M20 18h0"/><circle cx="14" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="18" r="2"/>',
+    search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
+    server: '<rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/>',
+    box: '<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
+    link: '<path d="M9 15l6-6"/><path d="M13 5l1.2-1.2a3.4 3.4 0 014.9 4.9L17.6 10"/><path d="M11 19l-1.2 1.2a3.4 3.4 0 01-4.9-4.9L6.4 14"/>',
+    key: '<circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L20 3"/><path d="M16 7l2 2"/><path d="M19 4l1 1"/>',
+    doc: '<path d="M6 3h9l3 3v15H6z"/><path d="M9 9h6M9 13h6M9 17h4"/>',
+    gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.4M12 18.6V21M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M3 12h2.4M18.6 12H21M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7"/>'
+  };
+  function svgIcon(key){
+    return '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+(ICONS[key]||ICONS.doc)+'</svg>';
+  }
+
+  var NAV = [
+    {id:'mytools', label:'My AI Tools', icon:'sliders', isNew:true},
+    {id:'explore', label:'Explore MCP Servers (beta)', icon:'search'},
+    {id:'servers', label:'MCP Servers', icon:'server'},
+    {id:'namespaces', label:'MetaMCP Namespaces', icon:'box'},
+    {id:'endpoints', label:'MetaMCP Endpoints', icon:'link'},
+    {id:'inspector', label:'MCP Inspector', icon:'search'},
+    {id:'apikeys', label:'API Keys', icon:'key'},
+    {id:'audit', label:'Audit Logs', icon:'doc'},
+    {id:'settings', label:'Settings', icon:'gear'},
+    {id:'logs', label:'Live Logs', icon:'doc', count:'1000'}
+  ];
+
+  var DATA = [
+    {
+      id:'simplenote', name:'Simplenote', slug:'simplenote-v1', masterOn:true,
+      description:"Quick personal notes and scratchpads.",
+      adv:{type:'streamable_http', url:'http://global-simplenote-mcp:3002/mcp', added:'Aug 31, 2026'},
+      groups:[{label:'Notes', tools:[
+        {id:'list_notes', name:'See your notes', on:true},
+        {id:'get_note', name:'Open a note', on:true},
+        {id:'create_note', name:'Create a note', on:true},
+        {id:'search_notes', name:'Search notes', on:true}
+      ]}]
+    },
+    {
+      id:'guru', name:'Guru', slug:'guru', masterOn:true,
+      description:"Search the team's knowledge base and pull up how-to cards.",
+      adv:{type:'streamable_http', url:'https://mcp.api.getguru.com/mcp', added:'Aug 31, 2026'},
+      groups:[
+        {label:'Find things', tools:[
+          {id:'search_documents', name:'Search Guru', desc:'Search every card for a keyword or question.', on:true},
+          {id:'get_card_by_id', name:'Open a card', desc:'Pull up one card when you know which one.', on:true},
+          {id:'list_collections', name:'List collections', desc:'See all folders/collections in Guru.', on:true},
+          {id:'list_folder_items', name:"See what's in a folder", on:true},
+          {id:'answer_generation', name:'Ask Guru a question', desc:"Get an AI answer pulled from the team's cards.", on:true}
+        ]},
+        {label:'Create & edit', tools:[
+          {id:'create_draft', name:'Start a draft', desc:'Start a new draft card.', on:true},
+          {id:'update_card', name:'Edit a card', on:false},
+          {id:'archive_card', name:'Archive a card', on:false},
+          {id:'move_card_to_collection', name:'Move a card', on:false},
+          {id:'delete_folder', name:'Delete a folder', desc:'Permanently removes a folder.', on:false}
+        ]},
+        {label:'More tools', collapsedByDefault:true, tools: mkExtra(['add_draft_collaborator','apply_draft_edits','bulk_get_card_comments','bulk_get_cards','create_folder','discard_draft','get_dataset','get_draft','get_pending_answer','list_datasets','list_folders','list_groups','list_knowledge_agents','move_card','move_folder','move_folder_to_collection','query_dataset','read_draft_for_edit','remove_draft_collaborator','update_collection','update_folder'])}
+      ]
+    },
+    {
+      id:'arcadedb', name:'ArcadeDB (local)', slug:'arcadedb-local-v1', masterOn:true,
+      description:"An internal database devs use for local testing. Design doesn't normally need this one.",
+      healthNote:"Connection has been flaky today — if you need it and it's not working, flag it to a dev.",
+      adv:{type:'streamable_http', url:'http://global-arcadedb:2480/api/v1/mcp', added:'Aug 20, 2026'},
+      groups:[{label:'Database', tools:[
+        {id:'run_query', name:'Run a quick lookup query', on:true},
+        {id:'list_databases', name:'List databases', on:true},
+        {id:'get_schema', name:"See a database's structure", on:false},
+        {id:'backup_database', name:'Back up a database', on:false}
+      ]}]
+    },
+    {
+      id:'teamworkfx-read', name:'TeamworkFX', slug:'teamworkfx-twfx-beta', masterOn:true, badge:'Read-only',
+      description:"Look up projects, tasks, and milestones in Teamwork. Can't change anything.",
+      adv:{type:'streamable_http', url:'https://teamworkfx-mcp.com/mcp', added:'Aug 20, 2026'},
+      groups:[
+        {label:'View project info', tools:[
+          {id:'get_project', name:'Look up a project', on:true},
+          {id:'list_todos', name:"See a to-do list's tasks", on:true},
+          {id:'list_todolists', name:"See a project's to-do lists", on:true},
+          {id:'list_milestones', name:'See project milestones', on:true},
+          {id:'get_todo', name:'Open one task', on:true},
+          {id:'list_comments', name:'Read comments on a task', on:true},
+          {id:'list_users', name:"See who's on a project", on:true}
+        ]},
+        {label:'More tools', collapsedByDefault:true, tools: mkExtra(['get_comment','get_company','get_message','get_message_category','get_milestone','get_todolist','get_user','list_columns','list_companies','list_mentions','list_message_categories','list_messages','list_projects'])}
+      ]
+    },
+    {
+      id:'teamworkfx-write', name:'TeamworkFX (can create & edit tasks)', slug:'teamworkfx-twfx-beta-write', masterOn:true, badge:'Write access',
+      description:"The version of TeamworkFX that can actually create, assign, and delete real project tasks.",
+      riskNote:"This one changes real project data. Check with a dev lead before turning tools on here — most of these should probably stay off unless a specific task needs it.",
+      adv:{type:'streamable_http', url:'https://teamworkfx-mcp.com/mcp', added:'Aug 20, 2026'},
+      groups:[
+        {label:'Create & assign', tools:[
+          {id:'create_todo', name:'Create a task', on:false},
+          {id:'assign_todo', name:'Assign a task to someone', on:false},
+          {id:'create_message', name:'Post a project message', on:false}
+        ]},
+        {label:'Edit & delete', tools:[
+          {id:'update_todo', name:'Edit a task', on:false},
+          {id:'move_todo', name:'Move a task to another list', on:false},
+          {id:'delete_todos', name:'Delete tasks', desc:'Permanent — cannot be undone.', on:false}
+        ]},
+        {label:'More tools', collapsedByDefault:true, tools: mkExtra(['create_comment','create_message_category','create_milestone','create_todolist','create_todos','delete_comment','delete_message','delete_message_category','delete_milestone','delete_todolist','reorder_todos','update_comment','update_message','update_message_category','update_milestone','update_todolist'])}
+      ]
+    },
+    {
+      id:'github', name:'GitHub', slug:'github', masterOn:true, badge:'Read-only',
+      description:"Look up WebFX code, pull requests, and issues.",
+      adv:{type:'streamable_http', url:'https://api.githubcopilot.com/mcp/', added:'Aug 20, 2026'},
+      groups:[
+        {label:'Look things up', tools:[
+          {id:'search_repositories', name:'Search repos', desc:'Find a WebFX repo by name or keyword.', on:true},
+          {id:'search_code', name:'Search code', on:true},
+          {id:'search_issues', name:'Search issues', desc:'Find issues by keyword, label, or author.', on:true},
+          {id:'list_pull_requests', name:'List pull requests', on:true},
+          {id:'pull_request_read', name:'Open a pull request', desc:"Read one PR's details and comments.", on:true},
+          {id:'get_file_contents', name:'Read a file', desc:'Pull the content of one file from a repo.', on:true},
+          {id:'list_commits', name:'List commits', on:true},
+          {id:'get_latest_release', name:'Check latest release', on:true}
+        ]},
+        {label:'More tools', collapsedByDefault:true, tools: mkExtra(['get_commit','get_label','get_release_by_tag','get_tag','get_team_members','get_teams','issue_read','list_branches','list_issue_types','list_issues','list_releases','list_tags','get_me','search_pull_requests','search_users'])}
+      ]
+    },
+    {
+      id:'fireflies', name:'Fireflies', slug:'fireflies-api-key', masterOn:true,
+      description:"Pull transcripts and summaries from recorded meetings.",
+      adv:{type:'streamable_http', url:'https://api.fireflies.ai/mcp', added:'Aug 20, 2026'},
+      groups:[
+        {label:'Meetings & transcripts', tools:[
+          {id:'get_transcript', name:'Get a meeting transcript', on:true},
+          {id:'get_summary', name:'Get a meeting summary', on:true},
+          {id:'search', name:'Search meetings', on:true},
+          {id:'get_active_meetings', name:'See meetings happening now', on:true}
+        ]},
+        {label:'Manage & share', tools:[
+          {id:'share_meeting', name:'Share a meeting recording', on:false},
+          {id:'update_meeting_title', name:'Rename a meeting', on:false},
+          {id:'revoke_meeting_access', name:"Remove someone's access to a meeting", desc:'Sensitive — affects who can see the recording.', on:false}
+        ]},
+        {label:'More tools', collapsedByDefault:true, tools: mkExtra(['create_soundbite','fetch','get_analytics','get_channel','get_rule_executions','get_soundbites','get_transcripts','get_user','get_user_contacts','get_usergroups','list_channels','move_meeting','update_meeting_privacy'])}
+      ]
+    },
+    {
+      id:'securitytrails', name:'SecurityTrails', slug:'security-trails', masterOn:false,
+      description:"Domain and DNS lookups for the security/dev team. Design doesn't need this one.",
+      adv:{type:'streamable_http', url:'https://security-trails.mcp.41x.webfxinteractive.com/mcp', added:'Aug 20, 2026'},
+      groups:[{label:'Lookups', tools:[
+        {id:'domain_lookup', name:'Look up domain info', on:false},
+        {id:'get_dns_history', name:"See a domain's DNS history", on:false},
+        {id:'get_associated_domains', name:'Find related domains', on:false}
+      ]}]
+    },
+    {
+      id:'googleworkspace', name:'Google Workspace', slug:'google-workspace', masterOn:true,
+      description:"Gmail, Calendar, and Drive, all in one connection.",
+      adv:{type:'streamable_http', url:'https://teamai-mcp.com/api/mcp', added:'Aug 20, 2026'},
+      groups:[
+        {label:'Mail, calendar & drive', tools:[
+          {id:'search_threads', name:'Search your inbox', on:true},
+          {id:'get_message', name:'Open an email', on:true},
+          {id:'list_events', name:'See your calendar', on:true},
+          {id:'create_event', name:'Add a calendar event', on:true},
+          {id:'search_files', name:'Search Drive files', on:true},
+          {id:'read_file_content', name:'Open a Drive file', on:true}
+        ]},
+        {label:'More tools', collapsedByDefault:true, tools: mkExtra(['send_message','create_draft','reply','forward','get_thread','label_message','list_drafts','list_calendars','delete_event','update_event','respond_to_event','suggest_time','copy_file','download_file_content','get_file_metadata','share_file','trash_file','update_file'])}
+      ]
+    },
+    {
+      id:'cloudflare', name:'Cloudflare (read-only)', slug:'cloudflare-api-readonly', masterOn:false,
+      description:"Checks on WebFX's CDN and DNS setup. Dev-only.",
+      healthNote:"API key expires in 9 days — a dev needs to renew it before this stops working.",
+      adv:{type:'streamable_http', url:'https://mcp.cloudflare.com/mcp', added:'Aug 20, 2026'},
+      groups:[{label:'Lookups', tools:[
+        {id:'list_zones', name:'List zones', on:false},
+        {id:'get_dns_records', name:'See DNS records', on:false},
+        {id:'get_ssl_status', name:'Check SSL status', on:false}
+      ]}]
+    },
+    {
+      id:'uptimerobot', name:'UptimeRobot', slug:'uptimerobot', masterOn:true,
+      description:"Shows whether client sites are up or down.",
+      adv:{type:'streamable_http', url:'https://mcp.uptimerobot.com/mcp', added:'Aug 20, 2026'},
+      groups:[{label:'Monitoring', tools:[
+        {id:'list_monitors', name:'See all monitored sites', on:true},
+        {id:'get_monitor_status', name:"Check one site's status", on:true},
+        {id:'create_monitor', name:'Add a new site to monitor', on:false}
+      ]}]
+    },
+    {
+      id:'jenkins-staging', name:'Jenkins (staging)', slug:'jenkins-staging-v1', masterOn:false,
+      description:"Kicks off test builds on the staging server. Dev-only.",
+      adv:{type:'streamable_http', url:'https://jenkins-staging.webfxinteractive.com/mcp-server/mcp', added:'Aug 20, 2026'},
+      groups:[{label:'Builds', tools:[
+        {id:'trigger_build', name:'Start a build', on:false},
+        {id:'get_build_status', name:'Check build status', on:false},
+        {id:'list_jobs', name:'List jobs', on:false}
+      ]}]
+    },
+    {
+      id:'jenkins-prod', name:'Jenkins (production)', slug:'jenkins-prod-v1', masterOn:false,
+      description:"Kicks off real production deploys. Dev-only.",
+      healthNote:"Hasn't connected since Tuesday — flag this to a dev if anyone needs it.",
+      adv:{type:'streamable_http', url:'https://jenkins.webfxinteractive.com/mcp-server/mcp', added:'Aug 20, 2026'},
+      groups:[{label:'Builds', tools:[
+        {id:'trigger_build', name:'Start a production build', on:false},
+        {id:'get_build_status', name:'Check build status', on:false},
+        {id:'rollback_deploy', name:'Roll back a deploy', on:false}
+      ]}]
+    },
+    {
+      id:'rcfx', name:'RCFX', slug:'rcfx', masterOn:false,
+      description:"Internal ops tools for the platform team. Design doesn't need this one.",
+      adv:{type:'streamable_http', url:'https://remote-mcp-server-979839513730.us-central1.run.app/mcp', added:'Aug 20, 2026'},
+      groups:[
+        {label:'Lookups', tools:[
+          {id:'site-details', name:'Look up a site', on:false},
+          {id:'site-search', name:'Search sites', on:false},
+          {id:'service-list', name:'List services', on:false},
+          {id:'user-search', name:'Search users', on:false}
+        ]},
+        {label:'More tools', collapsedByDefault:true, tools: mkExtra(['api-get','clipboard-fetch','clipboard-share','elastic-execute','elastic-mapping','mongo-execute','mongo-list-collections','mysql-ddl','mysql-execute','mysql-list-tables','opsgenie-get-alert','opsgenie-list-alerts','prometheus-query','prometheus-query-range','service-request','spanner-ddl','spanner-execute','spanner-topology','sheet-read'])}
+      ]
+    },
+    {
+      id:'rcfx-knowledge', name:'RCFX Dev Knowledge', slug:'rcfx-dev-knowledge', masterOn:true,
+      description:"Search internal engineering documentation and runbooks.",
+      adv:{type:'streamable_http', url:'https://mcp-rcfx-dev-knowledge-979839513730.us-central1.run.app/mcp', added:'Aug 20, 2026'},
+      groups:[{label:'Docs', tools:[
+        {id:'search_docs', name:'Search engineering docs', on:true},
+        {id:'get_runbook', name:'Open a runbook', on:true},
+        {id:'list_runbooks', name:'See all runbooks', on:true}
+      ]}]
+    },
+    {
+      id:'slack', name:'Slack', slug:'slack', masterOn:true,
+      description:"Search channels, read messages, and post updates.",
+      adv:{type:'streamable_http', url:'http://global-slack-mcp:3001/mcp', added:'Aug 20, 2026'},
+      groups:[
+        {label:'Read & search', tools:[
+          {id:'search_channels', name:'Find a channel', on:true},
+          {id:'search_users', name:'Find a teammate', on:true},
+          {id:'read_channel', name:"Read a channel's messages", on:true},
+          {id:'read_thread', name:'Read a thread', on:true},
+          {id:'get_reactions', name:'See reactions on a message', on:true}
+        ]},
+        {label:'Post & send', tools:[
+          {id:'send_message_draft', name:'Draft a message', desc:"Writes a draft — doesn't post anything.", on:true},
+          {id:'add_reaction', name:'Add an emoji reaction', on:true},
+          {id:'send_message', name:'Send a message', desc:'Posts to Slack as you.', on:false},
+          {id:'schedule_message', name:'Schedule a message', on:false},
+          {id:'create_canvas', name:'Create a canvas', on:false}
+        ]},
+        {label:'More tools', collapsedByDefault:true, tools: mkExtra(['list_channel_members','read_canvas','read_file','read_user_profile','search_emojis','search_public','search_public_and_private','update_canvas'])}
+      ]
+    }
+  ];
+
+  // ---- state helpers ----
+  function allTools(mcp){
+    var out = [];
+    mcp.groups.forEach(function(g){ g.tools.forEach(function(t){ out.push(t); }); });
+    return out;
+  }
+  function onCount(mcp){ return allTools(mcp).filter(function(t){return t.on;}).length; }
+  function totalCount(mcp){ return allTools(mcp).length; }
+  function state(mcp){
+    if (mcp.healthNote || mcp.riskNote) return 'attn';
+    return mcp.masterOn ? 'on' : 'off';
+  }
+
+  var activeTab = 'mytools';
+  var filter = 'all';
+  var globalQuery = '';
+  var openCards = {};
+  var toolQueries = {};
+  var showAllGroups = {};
+
+  function matchesGlobal(mcp){
+    if (!globalQuery) return true;
+    var q = globalQuery.toLowerCase();
+    return mcp.name.toLowerCase().indexOf(q) > -1 || mcp.slug.toLowerCase().indexOf(q) > -1;
+  }
+
+  function renderNav(){
+    document.getElementById('navlist').innerHTML = NAV.map(function(n){
+      var extra = n.isNew ? '<span class="newpill">New</span>' : (n.count ? '<span class="countpill">'+n.count+'</span>' : '');
+      return '<button class="navitem'+(activeTab===n.id?' active':'')+'" data-action="nav" data-tab="'+n.id+'">'+
+        svgIcon(n.icon)+'<span class="lbl">'+n.label+'</span>'+extra+
+      '</button>';
+    }).join('');
+    var current = NAV.find(function(n){return n.id===activeTab;});
+    document.getElementById('mobileTitle').textContent = current ? current.label : '';
+  }
+
+  function renderChips(){
+    var defs = [
+      {k:'all', label:'All'},
+      {k:'on', label:'Ready'},
+      {k:'attn', label:'Needs a look'},
+      {k:'off', label:'Turned off'}
+    ];
+    return defs.map(function(d){
+      return '<button class="chip" data-action="filter" data-key="'+d.k+'" aria-pressed="'+(filter===d.k)+'">'+d.label+'</button>';
+    }).join('');
+  }
+
+  function summaryHtml(){
+    var on = DATA.filter(function(m){return state(m)==='on';}).length;
+    var attn = DATA.filter(function(m){return state(m)==='attn';}).length;
+    var off = DATA.filter(function(m){return state(m)==='off';}).length;
+    return '<div class="summary">'+
+      '<span><strong>'+on+'</strong> ready to use</span>'+
+      '<span><strong>'+attn+'</strong> need a look</span>'+
+      '<span><strong>'+off+'</strong> turned off</span>'+
+    '</div>';
+  }
+
+  function toolRow(mcp, tool){
+    return '<div class="toolrow">'+
+      '<div class="toolinfo">'+
+        '<div class="toolname">'+tool.name+'</div>'+
+        (tool.desc ? '<div class="tooldesc">'+tool.desc+'</div>' : '')+
+      '</div>'+
+      '<button class="switch small" data-action="toggle-tool" data-mcp="'+mcp.id+'" data-tool="'+tool.id+'" aria-checked="'+tool.on+'"></button>'+
+    '</div>';
+  }
+
+  function groupBlock(mcp, group, gi, query){
+    var tools = group.tools;
+    if (query){
+      tools = tools.filter(function(t){ return t.name.toLowerCase().indexOf(query) > -1; });
+      if (!tools.length) return '';
+      return '<div class="grouphead"><span class="grouplabel">'+group.label+'</span></div>'+
+        tools.map(function(t){ return toolRow(mcp, t); }).join('');
+    }
+    var key = mcp.id+'::'+gi;
+    var expanded = !!showAllGroups[key];
+    if (group.collapsedByDefault && !expanded){
+      return '<button class="showmore" data-action="show-more" data-mcp="'+mcp.id+'" data-group="'+gi+'">Show '+tools.length+' more tools &rarr;</button>';
+    }
+    var head = '<div class="grouphead"><span class="grouplabel">'+group.label+'</span>'+
+      '<div class="bulklinks">'+
+        '<button data-action="bulk" data-mode="on" data-mcp="'+mcp.id+'" data-group="'+gi+'">All on</button>'+
+        '<button data-action="bulk" data-mode="off" data-mcp="'+mcp.id+'" data-group="'+gi+'">All off</button>'+
+      '</div></div>';
+    return head + tools.map(function(t){ return toolRow(mcp, t); }).join('');
+  }
+
+  function cardBody(mcp){
+    if (!mcp.masterOn){
+      return '<div class="offstate">'+
+        '<p>'+mcp.description+'</p>'+
+        '<p>Turned off for the team right now — nobody can use its tools.</p>'+
+        '<button class="btn primary" data-action="master-toggle" data-mcp="'+mcp.id+'">Turn on</button>'+
+      '</div>'+advBlock(mcp);
+    }
+    var query = (toolQueries[mcp.id] || '').toLowerCase();
+    var body = '<div class="desc">'+mcp.description+'</div>';
+    if (mcp.riskNote) body += '<div class="risknote">&#9888; '+mcp.riskNote+'</div>';
+    if (mcp.healthNote) body += '<div class="healthnote">&#9888; '+mcp.healthNote+'</div>';
+
+    var hasMany = allTools(mcp).length > 6;
+    if (hasMany){
+      body += '<div class="toolsearch">'+
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>'+
+        '<input type="text" placeholder="Search this tool’s features…" data-action="tool-search" data-mcp="'+mcp.id+'" value="'+(toolQueries[mcp.id]||'')+'" />'+
+      '</div>';
+    }
+
+    var groupsHtml = mcp.groups.map(function(g, gi){ return groupBlock(mcp, g, gi, query); }).filter(Boolean).join('');
+    if (!groupsHtml) groupsHtml = '<div class="empty" style="padding:10px 0;">No tools match that search.</div>';
+    body += '<div>'+groupsHtml+'</div>';
+    body += advBlock(mcp);
+    return body;
+  }
+
+  function advBlock(mcp){
+    return '<details class="adv"><summary>Technical details</summary>'+
+      '<div class="advbox">'+
+        '<dt>Type</dt><dd class="mono">'+mcp.adv.type+'</dd>'+
+        '<dt>Endpoint</dt><dd class="mono">'+mcp.adv.url+'</dd>'+
+        '<dt>Added</dt><dd>'+mcp.adv.added+'</dd>'+
+      '</div>'+
+    '</details>';
+  }
+
+  function card(mcp){
+    var st = state(mcp);
+    var isOpen = !!openCards[mcp.id];
+    var pillLabel = st==='on' ? 'Ready' : (st==='attn' ? 'Needs a look' : 'Turned off');
+    var pillClass = st;
+    var badgeHtml = mcp.badge ? '<span class="badge'+(mcp.badge==='Write access' ? ' write':'')+'">'+mcp.badge+'</span>' : '';
+
+    return '<div class="card" data-open="'+isOpen+'" data-attn="'+(st==='attn')+'">'+
+      '<div class="head">'+
+        '<button class="clickarea" data-action="toggle-open" data-mcp="'+mcp.id+'">'+
+          '<div class="avatar">'+initials(mcp.name)+'</div>'+
+          '<div class="titleblock">'+
+            '<div class="titlerow"><span class="name">'+mcp.name+'</span><span class="slug mono">'+mcp.slug+'</span>'+badgeHtml+'</div>'+
+            '<div class="sub">'+mcp.description+'</div>'+
+          '</div>'+
+          '<div class="metaright">'+
+            '<span class="pill '+pillClass+'"><span class="dot '+(st==='on'?'on':st==='attn'?'attn':'off')+'"></span>'+pillLabel+'</span>'+
+            (mcp.masterOn ? '<span class="count">'+onCount(mcp)+' of '+totalCount(mcp)+' tools on</span>' : '')+
+          '</div>'+
+          '<svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>'+
+        '</button>'+
+        '<button class="switch" data-action="master-toggle" data-mcp="'+mcp.id+'" aria-checked="'+mcp.masterOn+'" title="Turn this connector on or off for the team"></button>'+
+      '</div>'+
+      (isOpen ? '<div class="body">'+cardBody(mcp)+'</div>' : '')+
+    '</div>';
+  }
+
+  function myToolsPanel(){
+    var visible = DATA.filter(function(m){
+      var st = state(m);
+      var passFilter = filter==='all' || filter===st;
+      return passFilter && matchesGlobal(m);
+    });
+    var listHtml = visible.map(card).join('');
+    if (!listHtml) listHtml = '<div class="empty">No tools match your search.</div>';
+
+    return '<div class="pagehead">'+
+        '<div class="pageicon">'+svgIcon('sliders')+'</div>'+
+        '<div><h1>My AI Tools</h1><p>Every AI connection the team has access to, in plain language. Green means it’s ready to use. If something needs a dev, it says so.</p></div>'+
+      '</div>'+
+      '<div class="toolbar">'+
+        '<div class="search">'+
+          '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>'+
+          '<input id="globalSearch" type="text" placeholder="Find a tool by name, e.g. Guru or Slack…" value="'+globalQuery+'" />'+
+        '</div>'+
+        '<div class="chips">'+renderChips()+'</div>'+
+        '<div class="legendwrap">'+
+          '<button class="legendbtn" data-action="legend" title="What do the colors mean?">?</button>'+
+          '<div class="legendpop" id="legendPop" hidden>'+
+            '<div class="row"><span class="dot on"></span><span><b>Ready</b> — connected and turned on for the team.</span></div>'+
+            '<div class="row"><span class="dot attn"></span><span><b>Needs a look</b> — something’s off, or this one needs care before using. Flag it to a dev.</span></div>'+
+            '<div class="row"><span class="dot off"></span><span><b>Turned off</b> — not in use right now. No harm in leaving it off.</span></div>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+      summaryHtml()+
+      '<div class="list">'+listHtml+'</div>';
+  }
+
+  function placeholderPanel(nav){
+    return '<div class="pagehead">'+
+        '<div class="pageicon">'+svgIcon(nav.icon)+'</div>'+
+        '<div><h1>'+nav.label+'</h1><p>This is one of MetaMCP’s existing pages — it hasn’t been redesigned here.</p></div>'+
+      '</div>'+
+      '<div class="placeholder">Only <strong>My AI Tools</strong> has been rebuilt for this mockup.<br>'+
+        '<button class="btn primary" style="margin-top:12px;" data-action="nav" data-tab="mytools">Go to My AI Tools</button>'+
+      '</div>';
+  }
+
+  function render(){
+    renderNav();
+    var mainWrap = document.getElementById('mainWrap');
+    if (activeTab === 'mytools'){
+      mainWrap.innerHTML = myToolsPanel();
+    } else {
+      var nav = NAV.find(function(n){ return n.id === activeTab; });
+      mainWrap.innerHTML = placeholderPanel(nav);
+    }
+    var gs = document.getElementById('globalSearch');
+    if (gs){
+      gs.addEventListener('input', function(e){
+        globalQuery = e.target.value;
+        render();
+        var el = document.getElementById('globalSearch');
+        if (el){ el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+      });
+    }
+  }
+
+  // ---- mobile drawer ----
+  var sidebar = document.getElementById('sidebar');
+  var overlay = document.getElementById('overlay');
+  function closeDrawer(){ sidebar.classList.remove('open'); overlay.classList.remove('show'); }
+  document.getElementById('menuBtn').addEventListener('click', function(){
+    sidebar.classList.add('open'); overlay.classList.add('show');
+  });
+  overlay.addEventListener('click', closeDrawer);
+
+  // ---- delegated events ----
+  document.addEventListener('click', function(e){
+    if (!e.target.closest('.legendwrap')){
+      var pop = document.getElementById('legendPop');
+      if (pop) pop.hidden = true;
+    }
+
+    var el = e.target.closest('[data-action]');
+    if (!el) return;
+    var action = el.getAttribute('data-action');
+    var mcpId = el.getAttribute('data-mcp');
+    var mcp = DATA.find(function(m){ return m.id === mcpId; });
+
+    if (action === 'nav'){
+      activeTab = el.getAttribute('data-tab');
+      closeDrawer();
+      render();
+    } else if (action === 'legend'){
+      var pop2 = document.getElementById('legendPop');
+      pop2.hidden = !pop2.hidden;
+    } else if (action === 'filter'){
+      filter = el.getAttribute('data-key');
+      render();
+    } else if (action === 'toggle-open'){
+      openCards[mcpId] = !openCards[mcpId];
+      render();
+    } else if (action === 'master-toggle'){
+      e.stopPropagation();
+      mcp.masterOn = !mcp.masterOn;
+      render();
+    } else if (action === 'toggle-tool'){
+      e.stopPropagation();
+      var toolId = el.getAttribute('data-tool');
+      allTools(mcp).forEach(function(t){ if (t.id === toolId) t.on = !t.on; });
+      render();
+    } else if (action === 'show-more'){
+      var gi = el.getAttribute('data-group');
+      showAllGroups[mcpId+'::'+gi] = true;
+      render();
+    } else if (action === 'bulk'){
+      var gi2 = el.getAttribute('data-group');
+      var mode = el.getAttribute('data-mode') === 'on';
+      mcp.groups[gi2].tools.forEach(function(t){ t.on = mode; });
+      render();
+    }
+  });
+
+  document.body.addEventListener('input', function(e){
+    if (e.target.matches('[data-action="tool-search"]')){
+      var id = e.target.getAttribute('data-mcp');
+      toolQueries[id] = e.target.value;
+      render();
+      var input = document.querySelector('[data-action="tool-search"][data-mcp="'+id+'"]');
+      if (input){ input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+    }
+  });
+
+  // start with a couple of cards open so the pattern is visible immediately
+  openCards['guru'] = true;
+  openCards['teamworkfx-write'] = true;
+  render();
+})();
+</script>
+
+</body></html>

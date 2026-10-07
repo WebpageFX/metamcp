@@ -10,14 +10,16 @@ export default function MyAiToolsPage() {
   const { t, locale } = useTranslations();
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto w-full max-w-[820px]">
       <div className="flex items-start gap-3">
-        <div className="mt-1 flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-          <SlidersHorizontal className="size-4" />
+        <div className="flex size-[34px] shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <SlidersHorizontal className="size-[18px]" />
         </div>
-        <div className="space-y-1">
-          <h1 className="text-2xl font-bold">{t("my-ai-tools:title")}</h1>
-          <p className="max-w-3xl text-muted-foreground">
+        <div>
+          <h1 className="text-[1.35rem] font-semibold tracking-tight">
+            {t("my-ai-tools:title")}
+          </h1>
+          <p className="mt-1 max-w-[56ch] text-sm text-muted-foreground">
             {t("my-ai-tools:subtitle")}
           </p>
         </div>

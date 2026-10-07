@@ -23,6 +23,16 @@ export function isWriteTool(
   return WRITE_NAME_RE.test(normalized);
 }
 
+export function connectionInitials(name: string): string {
+  const label = humanizeName(name)
+    .replace(/\(.*?\)/g, "")
+    .trim();
+  const words = label.split(/\s+/).filter(Boolean);
+  const first = words[0]?.[0] ?? "?";
+  const second = words[1]?.[0] ?? "";
+  return `${first}${second}`.toUpperCase();
+}
+
 export function humanizeName(value: string): string {
   const spaced = value.replace(/[_-]+/g, " ").trim();
   if (!spaced) {
