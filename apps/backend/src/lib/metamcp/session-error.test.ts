@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   isBackendSessionLostError,
   isBackendTransportLostError,
+  isBackendUnauthorizedError,
   isRecoverableBackendError,
 } from "./session-error";
 
@@ -223,5 +224,31 @@ describe("isRecoverableBackendError", () => {
         error: { code: -32603, message: "Internal error" },
       }),
     ).toBe(false);
+  });
+
+  it("fires on upstream 401s so an expired OAuth token reconnects", () => {
+    const error = new Error(
+      'Error POSTing to endpoint (HTTP 401): {"error":"invalid_token"}',
+    );
+    expect(isBackendUnauthorizedError(error)).toBe(true);
+    expect(isRecoverableBackendError(error)).toBe(true);
+  });
+
+  it("fires on a 401 wrapped in Error.cause", () => {
+    const error = new Error("tool call failed");
+    error.cause = new Error("HTTP 401: token expired");
+    expect(isBackendUnauthorizedError(error)).toBe(true);
+    expect(isRecoverableBackendError(error)).toBe(true);
+  });
+
+  it("fires on HTTP 403 only when the body is an invalid-token envelope", () => {
+    const expired = new Error(
+      'Error POSTing to endpoint (HTTP 403): {"error":"invalid_token","error_description":"Access token is expired"}',
+    );
+    const forbidden = new Error(
+      "Error POSTing to endpoint (HTTP 403): Forbidden",
+    );
+    expect(isRecoverableBackendError(expired)).toBe(true);
+    expect(isRecoverableBackendError(forbidden)).toBe(false);
   });
 });

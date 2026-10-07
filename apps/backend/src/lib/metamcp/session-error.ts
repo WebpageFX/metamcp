@@ -32,6 +32,8 @@
  * this is the normative recovery path, not a workaround.
  */
 
+import { isUpstreamUnauthorizedError } from "../oauth-upstream/token-exchange";
+
 const SESSION_NOT_FOUND = "Session not found";
 const HTTP_404 = "HTTP 404";
 const RPC_CODE_PATTERNS = ["-32001", "-32600"];
@@ -216,14 +218,50 @@ export function isBackendTransportLostError(error: unknown): boolean {
 }
 
 /**
- * Convenience predicate — either the session-lost OR transport-lost
- * detector fires. Tool-call and dynamic-find recovery paths in
- * `metamcp-proxy.ts` use this so they engage the same invalidate +
- * reconnect + retry sequence regardless of which envelope the failure
- * arrived in.
+ * Upstream rejected the OAuth access token (HTTP 401, an SDK
+ * `UnauthorizedError`, or HTTP 403 with an invalid-token envelope).
+ *
+ * Mid-session list/tool calls used to surface this as a hard failure while
+ * the pooled transport kept the expired Bearer. Treating it as recoverable
+ * drops that connection and reconnects; `connectMetaMcpClient` already
+ * refreshes on the subsequent unauthorized handshake.
+ *
+ * Walks `.cause` because session/transport failures sometimes arrive
+ * wrapped. Bare 403s stay non-recoverable — classification lives in
+ * `isUpstreamUnauthorizedError` so a permission denial does not burn a
+ * rotating refresh token.
+ */
+export function isBackendUnauthorizedError(error: unknown): boolean {
+  let current: unknown = error;
+  let depth = 0;
+  while (current != null && depth < MAX_CAUSE_DEPTH) {
+    const candidate =
+      typeof current === "string" ? new Error(current) : current;
+    if (isUpstreamUnauthorizedError(candidate)) {
+      return true;
+    }
+    if (typeof current === "object" && current !== null && "cause" in current) {
+      current = (current as { cause?: unknown }).cause;
+      depth += 1;
+      continue;
+    }
+    break;
+  }
+  return false;
+}
+
+/**
+ * Convenience predicate — session-lost, transport-lost, or upstream
+ * unauthorized. List and tool-call recovery in `metamcp-proxy.ts` use this
+ * so they engage the same invalidate + reconnect + retry sequence
+ * regardless of which envelope the failure arrived in.
  */
 export function isRecoverableBackendError(error: unknown): boolean {
-  return isBackendSessionLostError(error) || isBackendTransportLostError(error);
+  return (
+    isBackendSessionLostError(error) ||
+    isBackendTransportLostError(error) ||
+    isBackendUnauthorizedError(error)
+  );
 }
 
 export function isBackendSessionLostError(error: unknown): boolean {

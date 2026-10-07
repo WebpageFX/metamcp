@@ -3,7 +3,10 @@ import { ServerParameters } from "@repo/zod-types";
 import logger from "@/utils/logger";
 
 import { ConnectedClient } from "./client";
-import { isRecoverableBackendError } from "./session-error";
+import {
+  isBackendUnauthorizedError,
+  isRecoverableBackendError,
+} from "./session-error";
 
 /**
  * Minimal slice of McpServerPool the recovery wrapper needs. Structural
@@ -37,7 +40,7 @@ export interface RequestWithSessionRecoveryOptions<T> {
   /**
    * The actual backend request(s). Re-invoked exactly once on a fresh
    * session if the first invocation fails with a recoverable backend
-   * error (session-lost / transport-lost envelope).
+   * error (session-lost, transport-lost, or upstream unauthorized).
    */
   attempt: (session: ConnectedClient) => Promise<T>;
   /**
@@ -73,10 +76,12 @@ export async function requestWithSessionRecovery<T>(
       throw error;
     }
 
+    const envelope = error instanceof Error ? error.message : String(error);
+    const reason = isBackendUnauthorizedError(error)
+      ? "upstream unauthorized"
+      : "session/transport lost";
     logger.warn(
-      `Backend connection lost for server ${opts.serverUuid} (${opts.serverName}) on ${opts.operation}; invalidating pool and retrying once. (envelope: ${
-        error instanceof Error ? error.message : String(error)
-      })`,
+      `Backend connection failed for server ${opts.serverUuid} (${opts.serverName}) on ${opts.operation} (${reason}); invalidating pool and retrying once. (envelope: ${envelope})`,
     );
 
     await opts.pool.invalidateServerConnection(opts.sessionId, opts.serverUuid);

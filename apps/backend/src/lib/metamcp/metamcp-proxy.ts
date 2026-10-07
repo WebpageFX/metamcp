@@ -56,7 +56,10 @@ import {
   createToolOverridesListToolsMiddleware,
   mapOverrideNameToOriginal,
 } from "./metamcp-middleware/tool-overrides.functional";
-import { isBackendSessionLostError } from "./session-error";
+import {
+  isBackendUnauthorizedError,
+  isRecoverableBackendError,
+} from "./session-error";
 import { parseToolName } from "./tool-name-parser";
 import { toolsSyncCache } from "./tools-sync-cache";
 import { sanitizeName } from "./utils";
@@ -584,7 +587,7 @@ export const createServer = async (
     try {
       return (await callOnce(clientForTool)) as CallToolResult;
     } catch (error) {
-      if (!isBackendSessionLostError(error)) {
+      if (!isRecoverableBackendError(error)) {
         logger.error(
           `Error calling tool "${name}" through ${
             clientForTool.client.getServerVersion()?.name || "unknown"
@@ -594,8 +597,11 @@ export const createServer = async (
         throw error;
       }
 
+      const reason = isBackendUnauthorizedError(error)
+        ? "upstream unauthorized"
+        : "session/transport lost";
       logger.warn(
-        `Backend reported session lost for server ${serverUuid} on tool "${name}"; invalidating pool and retrying once.`,
+        `Backend connection failed for server ${serverUuid} on tool "${name}" (${reason}); invalidating pool and retrying once.`,
       );
 
       await mcpServerPool.invalidateServerConnection(sessionId, serverUuid);
