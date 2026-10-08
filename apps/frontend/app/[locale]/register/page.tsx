@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 
 import { DomainWarningBanner } from "@/components/domain-warning-banner";
@@ -11,6 +11,11 @@ import { Input } from "@/components/ui/input";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { useTranslations } from "@/hooks/useTranslations";
 import { authClient } from "@/lib/auth-client";
+import {
+  getLocalePrefixedPath,
+  SUPPORTED_LOCALES,
+  SupportedLocale,
+} from "@/lib/i18n";
 import { vanillaTrpcClient } from "@/lib/trpc";
 
 function LoadingFallback() {
@@ -37,7 +42,7 @@ function RegisterForm() {
   const [isSignupDisabled, setIsSignupDisabled] = useState(false);
   const [checkingSignupStatus, setCheckingSignupStatus] = useState(true);
 
-  const router = useRouter();
+  const pathname = usePathname();
 
   // Function to check signup status
   const checkSignupStatus = async () => {
@@ -90,7 +95,6 @@ function RegisterForm() {
         email,
         password,
         name,
-        callbackURL: "/",
       });
 
       if (error) {
@@ -108,8 +112,11 @@ function RegisterForm() {
           setError(error.message || t("auth:registrationFailed"));
         }
       } else {
-        router.push("/");
-        router.refresh();
+        const first = pathname.split("/").filter(Boolean)[0];
+        const locale = SUPPORTED_LOCALES.includes(first as SupportedLocale)
+          ? (first as SupportedLocale)
+          : "en";
+        window.location.assign(getLocalePrefixedPath("/my-ai-tools", locale));
       }
     } catch (err) {
       // Handle any other errors

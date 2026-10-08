@@ -17,6 +17,12 @@ const sessionLostError = () =>
 
 const transportLostError = () => new Error("Not connected");
 
+const unauthorizedError = () =>
+  new Error('Error POSTing to endpoint (HTTP 401): {"error":"invalid_token"}');
+
+const bareForbiddenError = () =>
+  new Error("Error POSTing to endpoint (HTTP 403): Forbidden");
+
 const makeSession = (label: string): ConnectedClient =>
   ({ label }) as unknown as ConnectedClient;
 
@@ -89,6 +95,42 @@ describe("requestWithSessionRecovery", () => {
     expect(onFreshSession).toHaveBeenCalledWith(fresh);
     expect(attempt).toHaveBeenNthCalledWith(1, stale);
     expect(attempt).toHaveBeenNthCalledWith(2, fresh);
+  });
+
+  it("invalidates, re-acquires, and retries once on an upstream 401", async () => {
+    const stale = makeSession("stale");
+    const fresh = makeSession("fresh");
+    const pool = makePool(fresh);
+    const attempt = vi
+      .fn()
+      .mockRejectedValueOnce(unauthorizedError())
+      .mockResolvedValueOnce(["tool-c"]);
+
+    const result = await requestWithSessionRecovery({
+      ...baseOpts(pool, stale),
+      attempt,
+    });
+
+    expect(result).toEqual(["tool-c"]);
+    expect(pool.invalidateServerConnection).toHaveBeenCalledWith(
+      "session-abc",
+      "server-1",
+    );
+    expect(pool.getSession).toHaveBeenCalledTimes(1);
+    expect(attempt).toHaveBeenNthCalledWith(2, fresh);
+  });
+
+  it("does not refresh on a bare 403 permission denial", async () => {
+    const session = makeSession("stale");
+    const pool = makePool(undefined);
+    const forbidden = bareForbiddenError();
+    const attempt = vi.fn().mockRejectedValue(forbidden);
+
+    await expect(
+      requestWithSessionRecovery({ ...baseOpts(pool, session), attempt }),
+    ).rejects.toBe(forbidden);
+    expect(pool.invalidateServerConnection).not.toHaveBeenCalled();
+    expect(attempt).toHaveBeenCalledTimes(1);
   });
 
   it("recovers from the SDK transport-lost envelope too", async () => {

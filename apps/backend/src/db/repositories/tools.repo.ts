@@ -3,7 +3,7 @@ import {
   ToolCreateInput,
   ToolUpsertInput,
 } from "@repo/zod-types";
-import { and, eq, notInArray, sql } from "drizzle-orm";
+import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
 
 import { db } from "../index";
 import { toolsTable } from "../schema";
@@ -15,6 +15,31 @@ export class ToolsRepository {
       .from(toolsTable)
       .where(eq(toolsTable.mcp_server_uuid, mcpServerUuid))
       .orderBy(toolsTable.name);
+  }
+
+  async findByMcpServerUuids(
+    mcpServerUuids: string[],
+  ): Promise<DatabaseTool[]> {
+    if (mcpServerUuids.length === 0) {
+      return [];
+    }
+
+    return await db
+      .select()
+      .from(toolsTable)
+      .where(inArray(toolsTable.mcp_server_uuid, mcpServerUuids))
+      .orderBy(toolsTable.name);
+  }
+
+  async findByUuids(uuids: string[]): Promise<DatabaseTool[]> {
+    if (uuids.length === 0) {
+      return [];
+    }
+
+    return await db
+      .select()
+      .from(toolsTable)
+      .where(inArray(toolsTable.uuid, uuids));
   }
 
   async create(input: ToolCreateInput): Promise<DatabaseTool> {

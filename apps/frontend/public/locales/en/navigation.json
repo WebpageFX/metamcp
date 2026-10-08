@@ -10,5 +10,7 @@
   "liveLogs": "Live Logs",
   "application": "Application",
   "logout": "Logout",
-  "profile": "Profile"
+  "profile": "Profile",
+  "myAiTools": "My AI Tools",
+  "newBadge": "New"
 }

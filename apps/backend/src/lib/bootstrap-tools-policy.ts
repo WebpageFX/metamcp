@@ -200,6 +200,85 @@ export async function applyToolsPolicyMappings(input: {
   return { active, inactive };
 }
 
+const DEFAULT_ACTIVE_TOOLS_POLICY: McpServerToolsConfig = {
+  default: "active",
+};
+
+/** Avoid reconnecting to an empty upstream on every catalog refresh. */
+const emptyDiscoveryAttemptAt = new Map<string, number>();
+const EMPTY_DISCOVERY_RETRY_MS = 2 * 60 * 1000;
+
+/**
+ * List tools from the upstream server and store them. Uses the saved tools
+ * policy when one exists, otherwise marks every tool active.
+ */
+export async function discoverAndStoreServerTools(input: {
+  serverName: string;
+  serverUuid: string;
+  namespaceUuids: string[];
+}): Promise<boolean> {
+  const namespaceUuid = input.namespaceUuids[0];
+  if (!namespaceUuid) {
+    return false;
+  }
+
+  const policy =
+    (await loadToolsPolicy(input.serverName)) ?? DEFAULT_ACTIVE_TOOLS_POLICY;
+
+  const result = await discoverAndApplyToolsPolicy({
+    serverName: input.serverName,
+    serverUuid: input.serverUuid,
+    namespaceUuid,
+    policy,
+  });
+
+  if (!result.applied) {
+    return false;
+  }
+
+  for (const extraNamespaceUuid of input.namespaceUuids.slice(1)) {
+    await applyToolsPolicyToStoredTools({
+      serverName: input.serverName,
+      serverUuid: input.serverUuid,
+      namespaceUuid: extraNamespaceUuid,
+      policy,
+    });
+  }
+
+  return true;
+}
+
+/**
+ * Servers with no stored tools have never been listed. Try once, then wait
+ * before connecting again so a down upstream does not stall every page load.
+ */
+export async function ensureDiscoveredTools(input: {
+  serverName: string;
+  serverUuid: string;
+  namespaceUuids: string[];
+}): Promise<void> {
+  const existing = await toolsRepository.findByMcpServerUuid(input.serverUuid);
+  if (existing.length > 0 || input.namespaceUuids.length === 0) {
+    return;
+  }
+
+  const lastAttempt = emptyDiscoveryAttemptAt.get(input.serverUuid) ?? 0;
+  if (Date.now() - lastAttempt < EMPTY_DISCOVERY_RETRY_MS) {
+    return;
+  }
+
+  emptyDiscoveryAttemptAt.set(input.serverUuid, Date.now());
+
+  try {
+    await discoverAndStoreServerTools(input);
+  } catch (error) {
+    console.warn(
+      `⚠️ Failed to discover tools for MCP server "${input.serverName}":`,
+      error,
+    );
+  }
+}
+
 /**
  * Re-apply policy to tools already stored for this server (e.g. discovery failed
  * but a previous run populated the tools table).

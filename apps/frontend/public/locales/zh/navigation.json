@@ -10,5 +10,7 @@
   "liveLogs": "实时日志",
   "application": "应用程序",
   "logout": "退出登录",
-  "profile": "个人资料"
+  "profile": "个人资料",
+  "myAiTools": "我的 AI 工具",
+  "newBadge": "新"
 }
