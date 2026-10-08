@@ -56,6 +56,23 @@ export function getLocalizedPath(
   return `/${locale}${pathnameWithoutLocale === "/" ? "" : pathnameWithoutLocale}`;
 }
 
+/**
+ * Path under `app/[locale]/...`. Keeps the locale prefix for every language,
+ * including English, so navigation matches the route without a middleware hop.
+ */
+export function getLocalePrefixedPath(
+  pathname: string,
+  locale: SupportedLocale,
+): string {
+  const pathnameWithoutLocale = getPathnameWithoutLocale(pathname || "/");
+
+  if (pathnameWithoutLocale === "/") {
+    return `/${locale}`;
+  }
+
+  return `/${locale}${pathnameWithoutLocale}`;
+}
+
 // Client-side translation loader (for dynamic imports)
 export async function loadTranslations(
   locale: SupportedLocale,

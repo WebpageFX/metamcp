@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 
 import { DomainWarningBanner } from "@/components/domain-warning-banner";
@@ -11,6 +11,11 @@ import { Input } from "@/components/ui/input";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { useTranslations } from "@/hooks/useTranslations";
 import { authClient } from "@/lib/auth-client";
+import {
+  getLocalePrefixedPath,
+  SUPPORTED_LOCALES,
+  SupportedLocale,
+} from "@/lib/i18n";
 import { vanillaTrpcClient } from "@/lib/trpc";
 
 function LoginForm() {
@@ -25,9 +30,29 @@ function LoginForm() {
   const [isOidcEnabled, setIsOidcEnabled] = useState(false);
   const [authProvidersLoading, setAuthProvidersLoading] = useState(true);
 
-  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") || "/";
+  const requestedCallback = searchParams.get("callbackUrl");
+  const destination =
+    requestedCallback && requestedCallback !== "/"
+      ? requestedCallback
+      : "/my-ai-tools";
+
+  const localeFromPath = (): SupportedLocale => {
+    const first = pathname.split("/").filter(Boolean)[0];
+    return SUPPORTED_LOCALES.includes(first as SupportedLocale)
+      ? (first as SupportedLocale)
+      : "en";
+  };
+
+  const finishSignIn = () => {
+    // Full navigation so the new session cookie is on the next request.
+    // A client-side push here can be cancelled by the auth client's own
+    // redirect and leave the app on a blank loading screen until refresh.
+    window.location.assign(
+      getLocalePrefixedPath(destination, localeFromPath()),
+    );
+  };
 
   // Check if signup is disabled
   useEffect(() => {
@@ -88,13 +113,12 @@ function LoginForm() {
       const { error } = await authClient.signIn.email({
         email,
         password,
-        callbackURL: callbackUrl,
       });
 
       if (error) {
         setError(error.message || t("auth:signInError"));
       } else {
-        router.push(callbackUrl);
+        finishSignIn();
       }
     } catch (_err) {
       setError(t("auth:signInError"));
@@ -108,7 +132,7 @@ function LoginForm() {
     try {
       await authClient.signIn.social({
         provider: "oidc",
-        callbackURL: callbackUrl,
+        callbackURL: getLocalePrefixedPath(destination, localeFromPath()),
       });
     } catch (error) {
       console.error("OIDC sign in failed:", error);

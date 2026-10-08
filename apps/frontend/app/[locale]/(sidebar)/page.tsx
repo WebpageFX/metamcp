@@ -1,27 +1,16 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { SUPPORTED_LOCALES, SupportedLocale } from "@/lib/i18n";
 
-import { useTranslations } from "@/hooks/useTranslations";
+export default async function RootPage({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
+  const safeLocale = SUPPORTED_LOCALES.includes(locale as SupportedLocale)
+    ? locale
+    : "en";
 
-export default function RootPage() {
-  const { t } = useTranslations();
-  const router = useRouter();
-
-  useEffect(() => {
-    // Redirect to MCP servers page as the new default
-    router.replace("/mcp-servers");
-  }, [router]);
-
-  // Return a loading state while redirecting
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">
-          {t("common:loading")}
-        </h1>
-      </div>
-    </div>
-  );
+  redirect(`/${safeLocale}/my-ai-tools`);
 }
