@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { accessTokenNeedsRefresh } from "./refresh-on-401";
+
 vi.mock("../../db/repositories", () => ({
   oauthSessionsRepository: {
     findByMcpServerUuid: vi.fn(),
@@ -29,6 +31,7 @@ describe("tryRefreshUpstreamTokens", () => {
     const mod = await import("./refresh-on-401");
     return {
       tryRefreshUpstreamTokens: mod.tryRefreshUpstreamTokens,
+      refreshUpstreamTokensIfExpiring: mod.refreshUpstreamTokensIfExpiring,
       findByMcpServerUuid: repos.oauthSessionsRepository
         .findByMcpServerUuid as ReturnType<typeof vi.fn>,
       upsert: repos.oauthSessionsRepository.upsert as ReturnType<typeof vi.fn>,
@@ -268,5 +271,152 @@ describe("tryRefreshUpstreamTokens", () => {
     expect(result.error).toBe("invalid_grant");
     expect(result.upstreamStatus).toBe(400);
     expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it("sends the protected-resource `resource` on refresh (Guru)", async () => {
+    const { tryRefreshUpstreamTokens, findByMcpServerUuid, upsert } =
+      await loadModule();
+    findByMcpServerUuid.mockResolvedValue({
+      mcp_server_uuid: SERVER.uuid,
+      client_information: {
+        client_id: "c1",
+        token_endpoint: "https://mcp.api.getguru.com/oauth/mcp/token",
+      },
+      tokens: {
+        access_token: "OLD",
+        token_type: "bearer",
+        expires_in: 3599,
+        refresh_token: "RT_guru",
+      },
+    });
+    upsert.mockResolvedValue({});
+
+    const guru = {
+      ...SERVER,
+      url: "https://mcp.api.getguru.com/mcp",
+    };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+      const urlStr = typeof url === "string" ? url : (url as URL).toString();
+      if (urlStr.includes("/.well-known/oauth-protected-resource/mcp")) {
+        return jsonResponse(200, {
+          resource: "https://mcp.api.getguru.com/mcp",
+          authorization_servers: ["https://mcp.api.getguru.com"],
+        });
+      }
+      if (urlStr.includes("/.well-known/")) {
+        return new Response("nope", { status: 404 });
+      }
+      const body = init?.body as URLSearchParams;
+      expect(body.get("grant_type")).toBe("refresh_token");
+      expect(body.get("resource")).toBe("https://mcp.api.getguru.com/mcp");
+      expect(body.get("refresh_token")).toBe("RT_guru");
+      return jsonResponse(200, {
+        access_token: "AT_new",
+        token_type: "bearer",
+        expires_in: 3599,
+      });
+    });
+
+    const result = await tryRefreshUpstreamTokens(guru);
+    expect(result.status).toBe("refreshed");
+    expect(result.tokens?.refresh_token).toBe("RT_guru");
+    expect(result.tokens?.expires_at).toEqual(expect.any(Number));
+  });
+
+  it("does not refresh a token that is still inside its lifetime", async () => {
+    const { refreshUpstreamTokensIfExpiring, findByMcpServerUuid } =
+      await loadModule();
+    const issuedAt = new Date("2026-10-09T13:40:40.000Z");
+    findByMcpServerUuid.mockResolvedValue({
+      mcp_server_uuid: SERVER.uuid,
+      updated_at: issuedAt,
+      client_information: { client_id: "c1" },
+      tokens: {
+        access_token: "AT",
+        token_type: "bearer",
+        expires_in: 3599,
+        refresh_token: "RT",
+      },
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const result = await refreshUpstreamTokensIfExpiring(
+      SERVER,
+      issuedAt.getTime() + 60_000,
+    );
+    expect(result.status).toBe("fresh");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("refreshes once the access token is inside the skew window", async () => {
+    const { refreshUpstreamTokensIfExpiring, findByMcpServerUuid, upsert } =
+      await loadModule();
+    const issuedAt = new Date("2026-10-09T13:40:40.000Z");
+    findByMcpServerUuid.mockResolvedValue({
+      mcp_server_uuid: SERVER.uuid,
+      updated_at: issuedAt,
+      client_information: {
+        client_id: "c1",
+        token_endpoint: "https://upstream/token",
+      },
+      tokens: {
+        access_token: "AT_old",
+        token_type: "bearer",
+        expires_in: 3599,
+        refresh_token: "RT",
+      },
+    });
+    upsert.mockResolvedValue({});
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const urlStr = typeof url === "string" ? url : (url as URL).toString();
+      if (urlStr.includes("/.well-known/")) {
+        return new Response("nope", { status: 404 });
+      }
+      return jsonResponse(200, {
+        access_token: "AT_new",
+        token_type: "bearer",
+        expires_in: 3599,
+      });
+    });
+
+    // 3599s lifetime, 5 minute skew: 50 minutes in is still fresh; 56 is not.
+    const fresh = await refreshUpstreamTokensIfExpiring(
+      SERVER,
+      issuedAt.getTime() + 50 * 60 * 1000,
+    );
+    expect(fresh.status).toBe("fresh");
+
+    const expiring = await refreshUpstreamTokensIfExpiring(
+      SERVER,
+      issuedAt.getTime() + 56 * 60 * 1000,
+    );
+    expect(expiring.status).toBe("refreshed");
+    if (expiring.status === "refreshed") {
+      expect(expiring.tokens?.access_token).toBe("AT_new");
+    }
+  });
+});
+
+describe("accessTokenNeedsRefresh", () => {
+  it("is true when expires_at is inside the skew window", () => {
+    const now = Date.parse("2026-10-09T14:40:00.000Z");
+    expect(
+      accessTokenNeedsRefresh(
+        {
+          refresh_token: "RT",
+          expires_at: now + 4 * 60 * 1000,
+        },
+        null,
+        now,
+      ),
+    ).toBe(true);
+  });
+
+  it("is false when the token has no refresh_token", () => {
+    expect(
+      accessTokenNeedsRefresh(
+        { expires_in: 1, expires_at: Date.now() - 1000 },
+        null,
+      ),
+    ).toBe(false);
   });
 });

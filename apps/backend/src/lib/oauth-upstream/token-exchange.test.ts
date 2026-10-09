@@ -233,6 +233,27 @@ describe("refreshAccessToken", () => {
     expect(tokens.refresh_token).toBe("RT_rotated");
   });
 
+  it("sends the RFC 8707 resource when one is provided", async () => {
+    const fetchImpl = vi.fn<FetchImpl>(async (_url, init) => {
+      const body = init?.body as URLSearchParams;
+      expect(body.get("resource")).toBe("https://mcp.api.getguru.com/mcp");
+      return jsonResponse(200, {
+        access_token: "AT_new",
+        token_type: "Bearer",
+        expires_in: 3599,
+      });
+    });
+
+    await refreshAccessToken({
+      tokenEndpoint: "https://mcp.api.getguru.com/oauth/mcp/token",
+      refreshToken: "RT_original",
+      clientId: "client-1",
+      authMethod: "none",
+      resource: "https://mcp.api.getguru.com/mcp",
+      fetchImpl,
+    });
+  });
+
   it("surfaces 400 invalid_grant for revoked refresh tokens", async () => {
     const fetchImpl = vi.fn<FetchImpl>(async () =>
       jsonResponse(400, {
@@ -398,6 +419,24 @@ describe("isUpstreamUnauthorizedError", () => {
     expect(isUpstreamUnauthorizedError(new UnauthorizedError("nope"))).toBe(
       true,
     );
+  });
+
+  it("recognises StreamableHTTPError .code 401 when the body is empty", () => {
+    const error = new Error(
+      "Streamable HTTP error: Error POSTing to endpoint: ",
+    );
+    (error as { code?: number }).code = 401;
+    expect(isUpstreamUnauthorizedError(error)).toBe(true);
+  });
+
+  it("recognises a JSON-RPC envelope whose data.code is 401", () => {
+    expect(
+      isUpstreamUnauthorizedError({
+        code: -32001,
+        message: "Streamable HTTP error: Error POSTing to endpoint: ",
+        data: { code: 401 },
+      }),
+    ).toBe(true);
   });
 
   it("recognises errors whose message mentions 401 or unauthorized", () => {

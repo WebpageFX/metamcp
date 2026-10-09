@@ -3,6 +3,10 @@ import { ServerParameters } from "@repo/zod-types";
 import logger from "@/utils/logger";
 
 import { configService } from "../config.service";
+import {
+  applyRefreshedOAuthTokens,
+  refreshUpstreamTokensIfExpiring,
+} from "../oauth-upstream/refresh-on-401";
 import { ConnectedClient, connectMetaMcpClient } from "./client";
 import { serverRequiresForwardedHeaders } from "./header-forwarding";
 import { metamcpLogStore } from "./log-store";
@@ -49,6 +53,10 @@ export class McpServerPool {
 
   // Health check timer for idle sessions
   private healthCheckTimer: NodeJS.Timeout | null = null;
+
+  // Guards overlapping OAuth refresh passes when a refresh outlives the
+  // 60s health-check interval.
+  private oauthMaintenanceInFlight = false;
 
   // Background idle sessions by namespace: namespaceUuid -> any
   private backgroundIdleSessionsByNamespace: Map<string, Map<string, unknown>> =
@@ -478,6 +486,10 @@ export class McpServerPool {
   ): Promise<void> {
     const promises = Object.entries(serverParams).map(
       async ([uuid, params]) => {
+        // Health checks and the OAuth refresh pass read this cache. Idle
+        // sessions created at startup never went through getSession, so
+        // without this write a dead OAuth connection could not be rebuilt.
+        this.serverParamsCache[uuid] = params;
         if (!this.idleSessions[uuid]) {
           await this.createIdleSession(uuid, params, namespaceUuid);
         }
@@ -1046,11 +1058,62 @@ export class McpServerPool {
   }
 
   /**
+   * Refresh OAuth access tokens that are expired or inside the skew window,
+   * then rebuild the idle connection so it carries the new bearer.
+   * Otherwise the token dies on the hour and the only recovery is opening
+   * the MCP server page, which runs the browser SDK refresh.
+   */
+  private async maintainOAuthSessions(): Promise<void> {
+    if (this.oauthMaintenanceInFlight) {
+      return;
+    }
+    const entries = Object.entries(this.serverParamsCache).filter(
+      ([, params]) =>
+        (params.type === "SSE" || params.type === "STREAMABLE_HTTP") &&
+        Boolean(params.oauth_tokens?.refresh_token) &&
+        Boolean(params.url),
+    );
+    if (entries.length === 0) {
+      return;
+    }
+
+    this.oauthMaintenanceInFlight = true;
+    try {
+      for (const [serverUuid, params] of entries) {
+        try {
+          const refresh = await refreshUpstreamTokensIfExpiring(params);
+          if (refresh.status !== "refreshed" || !refresh.tokens) {
+            continue;
+          }
+          applyRefreshedOAuthTokens(params, refresh.tokens);
+          this.serverParamsCache[serverUuid] = params;
+          if (this.idleSessions[serverUuid]) {
+            await this.invalidateIdleSession(serverUuid, params);
+          } else if (!this.creatingIdleSessions.has(serverUuid)) {
+            this.createIdleSessionAsync(serverUuid, params);
+          }
+        } catch (error) {
+          logger.error(
+            `[oauth] proactive refresh failed for ${params.name} (${serverUuid}):`,
+            error,
+          );
+        }
+      }
+    } finally {
+      this.oauthMaintenanceInFlight = false;
+    }
+  }
+
+  /**
    * Check health of idle sessions by pinging them.
    * Dead sessions are cleaned up and recreated.
    * Servers in ERROR state whose crash counters have been reset are retried.
+   * OAuth access tokens are refreshed before the ping so an hourly expiry
+   * does not drop the idle connection.
    */
   private async checkIdleSessionHealth(): Promise<void> {
+    await this.maintainOAuthSessions();
+
     const serverUuids = Object.keys(this.idleSessions);
     if (serverUuids.length === 0) {
       return;

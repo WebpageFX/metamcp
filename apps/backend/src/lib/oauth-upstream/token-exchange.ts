@@ -187,6 +187,11 @@ export interface RefreshAccessTokenInput {
   clientSecret?: string;
   authMethod: TokenEndpointAuthMethod;
   scope?: string;
+  // RFC 8707 resource indicator. MCP authorization servers that publish
+  // protected-resource metadata (Guru, and the MCP SDK's own refresh)
+  // reject or mis-bind a refresh that omits the same `resource` the
+  // original grant used.
+  resource?: string;
   fetchImpl?: typeof fetch;
 }
 
@@ -199,6 +204,9 @@ export async function refreshAccessToken(
   });
   if (input.scope) {
     params.set("scope", input.scope);
+  }
+  if (input.resource) {
+    params.set("resource", input.resource);
   }
 
   const tokens = await postFormToToken({
@@ -311,6 +319,69 @@ export function resolveTokenEndpoint(args: {
   return new URL("/token", args.serverUrl).toString();
 }
 
+// Path-aware RFC 9728 discovery URLs, matching the MCP SDK: try
+// `/.well-known/oauth-protected-resource` + the server path first
+// (`https://host/mcp` → `https://host/.well-known/oauth-protected-resource/mcp`),
+// then the origin root. Returns [] when `serverUrl` is not a URL.
+export function protectedResourceMetadataUrls(serverUrl: string): string[] {
+  const issuer = new URL(serverUrl);
+  let pathname = issuer.pathname;
+  if (pathname.endsWith("/")) {
+    pathname = pathname.slice(0, -1);
+  }
+  const pathAware = new URL(
+    `/.well-known/oauth-protected-resource${pathname}`,
+    issuer,
+  );
+  pathAware.search = issuer.search;
+  const urls = [pathAware.toString()];
+  if (pathname !== "") {
+    urls.push(
+      new URL("/.well-known/oauth-protected-resource", issuer).toString(),
+    );
+  }
+  return urls;
+}
+
+// Resource indicator to send on a refresh grant. Present only when the
+// MCP server publishes protected-resource metadata — same rule the MCP
+// SDK uses, so providers that don't speak RFC 8707 are left alone.
+// Discovery failures omit the parameter rather than failing the refresh.
+export async function resolveOAuthResource(
+  serverUrl: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string | undefined> {
+  let urls: string[];
+  try {
+    urls = protectedResourceMetadataUrls(serverUrl);
+  } catch {
+    return undefined;
+  }
+
+  for (const url of urls) {
+    try {
+      const response = await fetchImpl(url, {
+        headers: { Accept: "application/json" },
+      });
+      if (!response.ok) {
+        continue;
+      }
+      const data = (await response.json()) as { resource?: unknown };
+      if (typeof data?.resource === "string" && data.resource.length > 0) {
+        return data.resource;
+      }
+      return undefined;
+    } catch (error) {
+      logger.warn(
+        `[oauth] protected-resource discovery failed at ${url}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+  return undefined;
+}
+
 // Pick the token endpoint auth method, honoring (in order):
 //   1. Explicit value on client_information
 //   2. Server's declared supported methods (prefer `none` for PKCE, then
@@ -338,8 +409,39 @@ const INVALID_TOKEN_OAUTH_ERROR_CODES = [
 // is treated as a legitimate permission denial — refreshing the token
 // won't make it go away, and burning a rotating refresh_token on it
 // would be worse than no-op.
+function hasHttp401(error: object): boolean {
+  const obj = error as {
+    code?: unknown;
+    status?: unknown;
+    httpStatus?: unknown;
+    data?: unknown;
+  };
+  if (obj.code === 401 || obj.status === 401 || obj.httpStatus === 401) {
+    return true;
+  }
+  if (obj.data && typeof obj.data === "object") {
+    const data = obj.data as {
+      code?: unknown;
+      status?: unknown;
+      httpStatus?: unknown;
+    };
+    if (data.code === 401 || data.status === 401 || data.httpStatus === 401) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function isUpstreamUnauthorizedError(error: unknown): boolean {
   if (!error) return false;
+  // Streamable HTTP without an auth provider throws StreamableHTTPError,
+  // whose message is "Streamable HTTP error: Error POSTing to endpoint: "
+  // when the body is empty. The HTTP status lives on `.code`, not in the
+  // message. Guru (and the inspector proxy) surface 401 that way, so a
+  // message-only check never refreshes the token.
+  if (typeof error === "object" && hasHttp401(error)) {
+    return true;
+  }
   if (
     typeof error === "object" &&
     "name" in error &&

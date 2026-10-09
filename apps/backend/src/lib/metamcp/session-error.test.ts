@@ -226,6 +226,15 @@ describe("isRecoverableBackendError", () => {
     ).toBe(false);
   });
 
+  it("fires on an empty-body Streamable HTTP 401 (Guru shape)", () => {
+    const error = new Error(
+      "Streamable HTTP error: Error POSTing to endpoint: ",
+    );
+    (error as { code?: number }).code = 401;
+    expect(isBackendUnauthorizedError(error)).toBe(true);
+    expect(isRecoverableBackendError(error)).toBe(true);
+  });
+
   it("fires on upstream 401s so an expired OAuth token reconnects", () => {
     const error = new Error(
       'Error POSTing to endpoint (HTTP 401): {"error":"invalid_token"}',
