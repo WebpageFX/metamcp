@@ -8,7 +8,10 @@ import { ServerParameters } from "@repo/zod-types";
 import logger from "@/utils/logger";
 
 import { oauthSessionsRepository } from "../../db/repositories";
-import { tryRefreshUpstreamTokens } from "../oauth-upstream/refresh-on-401";
+import {
+  applyRefreshedOAuthTokens,
+  tryRefreshUpstreamTokens,
+} from "../oauth-upstream/refresh-on-401";
 import { recoverFromPostAuthRace } from "../oauth-upstream/retry-post-auth";
 import { isUpstreamUnauthorizedError } from "../oauth-upstream/token-exchange";
 import { ProcessManagedStdioTransport } from "../stdio-transport/process-managed-transport";
@@ -362,19 +365,7 @@ export const connectMetaMcpClient = async (
         try {
           const refresh = await tryRefreshUpstreamTokens(serverParams);
           if (refresh.status === "refreshed" && refresh.tokens) {
-            serverParams.oauth_tokens = {
-              access_token: refresh.tokens.access_token,
-              token_type: refresh.tokens.token_type,
-              expires_in: refresh.tokens.expires_in,
-              scope:
-                typeof refresh.tokens.scope === "string"
-                  ? refresh.tokens.scope
-                  : undefined,
-              refresh_token:
-                typeof refresh.tokens.refresh_token === "string"
-                  ? refresh.tokens.refresh_token
-                  : undefined,
-            };
+            applyRefreshedOAuthTokens(serverParams, refresh.tokens);
             logger.info(
               `[oauth] upstream 401 refreshed for ${serverParams.name} (${serverParams.uuid}); retrying connect`,
             );

@@ -29,10 +29,95 @@ import {
   OAuthTokens,
   redactToken,
   refreshAccessToken,
+  resolveOAuthResource,
   resolveTokenEndpoint,
   resolveTokenEndpointAuthMethod,
   UpstreamTokenError,
 } from "./token-exchange";
+
+// Refresh this long before the access token's expiry so the pooled
+// connection is rebuilt with a live bearer instead of dying on the hour.
+export const OAUTH_REFRESH_SKEW_MS = 5 * 60 * 1000;
+
+export function stampAccessTokenExpiry(
+  tokens: OAuthTokens,
+  now = Date.now(),
+): OAuthTokens {
+  if (
+    typeof tokens.expires_in === "number" &&
+    Number.isFinite(tokens.expires_in)
+  ) {
+    tokens.expires_at = now + tokens.expires_in * 1000;
+  }
+  return tokens;
+}
+
+export function accessTokenExpiresAtMs(
+  tokens: { expires_in?: number; expires_at?: unknown },
+  updatedAt?: Date | string | null,
+): number | null {
+  const raw = tokens.expires_at;
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return raw;
+  }
+  if (typeof raw === "string") {
+    const parsed = Date.parse(raw);
+    if (!Number.isNaN(parsed)) {
+      return parsed;
+    }
+  }
+  if (
+    typeof tokens.expires_in === "number" &&
+    Number.isFinite(tokens.expires_in) &&
+    updatedAt
+  ) {
+    const base =
+      updatedAt instanceof Date
+        ? updatedAt.getTime()
+        : Date.parse(String(updatedAt));
+    if (!Number.isNaN(base)) {
+      return base + tokens.expires_in * 1000;
+    }
+  }
+  return null;
+}
+
+export function accessTokenNeedsRefresh(
+  tokens: {
+    expires_in?: number;
+    expires_at?: unknown;
+    refresh_token?: string;
+  },
+  updatedAt?: Date | string | null,
+  now = Date.now(),
+  skewMs = OAUTH_REFRESH_SKEW_MS,
+): boolean {
+  if (!tokens.refresh_token) {
+    return false;
+  }
+  const expiresAt = accessTokenExpiresAtMs(tokens, updatedAt);
+  if (expiresAt === null) {
+    return false;
+  }
+  return expiresAt - now <= skewMs;
+}
+
+export function applyRefreshedOAuthTokens(
+  serverParams: { oauth_tokens?: ServerParameters["oauth_tokens"] },
+  tokens: OAuthTokens,
+): void {
+  serverParams.oauth_tokens = {
+    access_token: tokens.access_token,
+    token_type: tokens.token_type,
+    expires_in:
+      typeof tokens.expires_in === "number" ? tokens.expires_in : undefined,
+    scope: typeof tokens.scope === "string" ? tokens.scope : undefined,
+    refresh_token:
+      typeof tokens.refresh_token === "string"
+        ? tokens.refresh_token
+        : serverParams.oauth_tokens?.refresh_token,
+  };
+}
 
 export interface RefreshResult {
   status:
@@ -131,10 +216,13 @@ async function doRefresh(
     hasSecret: Boolean(clientSecret),
   });
 
+  const resource = await resolveOAuthResource(serverParams.url);
+
   logger.info(
-    `[oauth] proxy 401 → refreshing tokens — server=${serverParams.uuid} ` +
+    `[oauth] refreshing tokens — server=${serverParams.uuid} ` +
       `(${serverParams.name}) token_endpoint=${tokenEndpoint} ` +
       `auth_method=${authMethod} ` +
+      `resource=${resource ?? "<omitted>"} ` +
       `refresh_token=${redactToken(currentTokens.refresh_token)}`,
   );
 
@@ -146,6 +234,7 @@ async function doRefresh(
       clientId,
       clientSecret,
       authMethod,
+      resource,
       scope:
         typeof currentTokens.scope === "string"
           ? currentTokens.scope
@@ -174,6 +263,8 @@ async function doRefresh(
     };
   }
 
+  stampAccessTokenExpiry(newTokens);
+
   await oauthSessionsRepository.upsert({
     mcp_server_uuid: serverParams.uuid,
     tokens: newTokens,
@@ -185,4 +276,33 @@ async function doRefresh(
   );
 
   return { status: "refreshed", tokens: newTokens };
+}
+
+// Refresh only when the stored access token is expired or inside the skew
+// window. Callers (the idle-pool health check) use this so OAuth MCP
+// servers keep a live bearer without someone opening the server page.
+// A still-valid token returns `{ status: "fresh" }` and does not touch
+// the upstream.
+export async function refreshUpstreamTokensIfExpiring(
+  serverParams: Pick<ServerParameters, "uuid" | "name" | "url">,
+  now = Date.now(),
+): Promise<RefreshResult | { status: "fresh" }> {
+  const session = await oauthSessionsRepository.findByMcpServerUuid(
+    serverParams.uuid,
+  );
+  const tokens = session?.tokens as
+    | (OAuthTokens & { refresh_token?: string })
+    | null
+    | undefined;
+  if (!session || !tokens?.refresh_token) {
+    return { status: "fresh" };
+  }
+  if (!accessTokenNeedsRefresh(tokens, session.updated_at, now)) {
+    return { status: "fresh" };
+  }
+  logger.info(
+    `[oauth] access token expiring — refreshing ahead of disconnect ` +
+      `server=${serverParams.uuid} (${serverParams.name})`,
+  );
+  return tryRefreshUpstreamTokens(serverParams);
 }
